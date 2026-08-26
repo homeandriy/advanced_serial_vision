@@ -1,0 +1,167 @@
+name: Build and release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: serial-vision-release-main
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      value: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          base_version="$(tr -d '\r\n' < VERSION)"
+          major_minor="${base_version%.*}"
+          version="${major_minor}.${RUN_NUMBER}"
+          printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set build version
+        shell: pwsh
+        run: Set-Content -NoNewline VERSION $env:VERSION
+
+      - name: Install Python dependencies and test
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install '.[build]'
+          python -m unittest discover -s application/tests
+
+      - name: Build portable executable
+        shell: pwsh
+        run: python -m PyInstaller --noconfirm --clean tools/serial-vision.spec
+
+      - name: Install Windows packagers
+        shell: pwsh
+        run: choco install innosetup wixtoolset --no-progress --yes
+
+      - name: Build EXE and MSI installers
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/installer | Out-Null
+          & iscc.exe "/DAppVersion=$env:VERSION" installer/serial-vision.iss
+          & candle.exe "-dAppVersion=$env:VERSION" "-dSourceDir=$PWD/dist" -out dist/installer/ installer/serial-vision.wxs
+          if ($LASTEXITCODE -ne 0) { throw "WiX candle failed: $LASTEXITCODE" }
+          & light.exe -out "dist/installer/SerialVision-v$env:VERSION.msi" dist/installer/serial-vision.wixobj
+          if ($LASTEXITCODE -ne 0) { throw "WiX light failed: $LASTEXITCODE" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          if-no-files-found: error
+          path: |
+            dist/SerialVision.exe
+            dist/installer/*.exe
+            dist/installer/*.msi
+
+  linux:
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set build version
+        run: printf '%s' "$VERSION" > VERSION
+
+      - name: Install Python dependencies and test
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install '.[build]'
+          python -m unittest discover -s application/tests
+
+      - name: Build Linux executable and Debian package
+        run: |
+          python -m PyInstaller --noconfirm --clean tools/serial-vision.spec
+          chmod +x tools/build-deb.sh
+          tools/build-deb.sh "$VERSION" dist/SerialVision
+
+      - name: Package versioned Linux source
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          staging="$(mktemp -d)"
+          mkdir -p "$staging/serial-vision-$VERSION"
+          git archive "$SOURCE_SHA" | tar -x -C "$staging/serial-vision-$VERSION"
+          printf '%s' "$VERSION" > "$staging/serial-vision-$VERSION/VERSION"
+          tar -C "$staging" -czf "dist/serial-vision-$VERSION-source.tar.gz" "serial-vision-$VERSION"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          if-no-files-found: error
+          path: |
+            dist/serial-vision_*.deb
+            dist/serial-vision-*-source.tar.gz
+
+  release:
+    needs:
+      - version
+      - windows
+      - linux
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.value }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate release changelog
+        run: |
+          previous_tag="$(git tag --merged "$GITHUB_SHA" --sort=-version:refname | head -n 1)"
+          {
+            printf '# Serial Vision v%s\n\n' "$VERSION"
+            printf 'Automated build for commit `%s`.\n\n' "$GITHUB_SHA"
+            printf '## Changes\n\n'
+            if [ -n "$previous_tag" ]; then
+              git log --format='- %s (%h)' "$previous_tag..$GITHUB_SHA"
+            else
+              git log --format='- %s (%h)' "$GITHUB_SHA"
+            fi
+            printf '\n## Project changelog\n\n'
+            cat CHANGELOG.md
+          } > release-notes.md
+
+      - name: Publish GitHub release
+        run: |
+          gh release create "v$VERSION" release-assets/* \
+            --target "$GITHUB_SHA" \
+            --title "Serial Vision v$VERSION" \
+            --notes-file release-notes.md

@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Added automatic GitHub releases with Windows EXE/MSI and Linux source/DEB artifacts.
+
 ## v0.1.0 - 2026-08-26
 
 ### Added
