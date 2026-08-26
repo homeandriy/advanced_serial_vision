@@ -65,7 +65,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force dist/installer | Out-Null
           & iscc.exe "/DAppVersion=$env:VERSION" installer/serial-vision.iss
-          & heat.exe dir "$PWD/dist/SerialVision" -cg SerialVisionFiles -dr INSTALLDIR -gg -srd -sfrag -out dist/installer/serial-vision-files.wxs
+          & heat.exe dir "$PWD/dist/SerialVision" -cg SerialVisionFiles -dr INSTALLDIR -gg -srd -sfrag -t installer/harvest-x64.xslt -out dist/installer/serial-vision-files.wxs
           if ($LASTEXITCODE -ne 0) { throw "WiX heat failed: $LASTEXITCODE" }
           & candle.exe "-dAppVersion=$env:VERSION" "-dSourceDir=$PWD/dist/SerialVision" -out dist/installer/ installer/serial-vision.wxs dist/installer/serial-vision-files.wxs
           if ($LASTEXITCODE -ne 0) { throw "WiX candle failed: $LASTEXITCODE" }
