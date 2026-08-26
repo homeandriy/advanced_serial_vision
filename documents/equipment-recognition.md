@@ -31,7 +31,7 @@ model in v0.1.0; the Windows user who launches it is the operator.
 7. The operator creates, edits, or deletes equipment models, including their type and
    service. The models table shows each model usage count and supports sorting by
    name and numeric usage count. A model still cannot be deleted while equipment
-   records reference it.
+   records reference it. The operator can import models from an XLSX worksheet named Models or Моделі with name, device_type and service columns. Only modem/tuner and internet/television are accepted; malformed rows are skipped and duplicate combinations remain unchanged.
 
 ## Validation and guards
 

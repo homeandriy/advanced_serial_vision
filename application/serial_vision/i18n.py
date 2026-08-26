@@ -119,3 +119,7 @@ TEXT["pl"].update({"api_integrations": "Integracje API", "api_enabled": "Włącz
 TEXT["uk"]["version_label"] = "Версія"
 TEXT["en"]["version_label"] = "Version"
 TEXT["pl"]["version_label"] = "Wersja"
+
+TEXT["uk"].update({"import_models": "Імпорт моделей з Excel", "model_import_summary": "Додано: {added}. Пропущено дублікатів: {duplicates}. Некоректних рядків: {invalid}.", "model_import_file_type": "Оберіть файл Excel у форматі .xlsx.", "model_import_file_invalid": "Не вдалося прочитати файл Excel.", "model_import_headers": "Excel має містити колонки name, device_type, service."})
+TEXT["en"].update({"import_models": "Import models from Excel", "model_import_summary": "Added: {added}. Duplicate rows skipped: {duplicates}. Invalid rows: {invalid}.", "model_import_file_type": "Choose an Excel .xlsx file.", "model_import_file_invalid": "The Excel file could not be read.", "model_import_headers": "Excel must contain name, device_type and service columns."})
+TEXT["pl"].update({"import_models": "Importuj modele z Excel", "model_import_summary": "Dodano: {added}. Pominięto duplikaty: {duplicates}. Niepoprawne wiersze: {invalid}.", "model_import_file_type": "Wybierz plik Excel .xlsx.", "model_import_file_invalid": "Nie można odczytać pliku Excel.", "model_import_headers": "Excel musi zawierać kolumny name, device_type i service."})

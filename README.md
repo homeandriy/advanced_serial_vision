@@ -1,16 +1,49 @@
 # Serial Vision
 
-Python 3.11 + PySide6 rewrite of the NativePHP desktop utility for finding serial
-numbers and MAC addresses on equipment photographs.
+**Serial Vision** — локальний desktop-застосунок на Python 3.11+ і PySide6 / Qt 6 для розпізнавання серійних номерів, MAC-адрес і штрихкодів на фото, а також обліку руху обладнання.
 
-## Current scope
+Застосунок зберігає дані у профілі поточного користувача, працює без мережі для OCR та обліку й не потребує встановленого Tesseract.
 
-The desktop version provides local SQLite storage, image-folder scanning, RapidOCR
-OCR, barcode recognition, image rotation, AI profiles for OpenAI/Anthropic/Gemini,
-and a localized Windows packaging workflow. Provider keys are stored locally in
-Windows Credential Manager, never in SQLite or source control.
+## Можливості
 
-## Run
+### Розпізнавання фото
+
+- Рекурсивний каталог фото з посторінковим переглядом, поворотом, видаленням і відкриттям вибраного файла стандартним переглядачем ОС.
+- Локальний OCR через RapidOCR: англійська мова використовується за замовчуванням для серійних номерів і MAC-адрес; також доступні українська та польська.
+- Локальне зчитування 1D/2D штрихкодів.
+- Необов'язкове AI-розпізнавання через налаштовані профілі OpenAI, Anthropic або Gemini. Ключі зберігаються в системному сховищі облікових даних, а не у SQLite.
+- Результати OCR, штрихкодів та AI можна копіювати через контекстне меню.
+
+### Обладнання, моделі й статистика
+
+- CRUD записів обладнання: серійний номер/MAC, договір, прийом або видача, модель, тип, послуга, дата та посилання на вихідне фото.
+- Фільтри за періодом, моделлю, операцією, типом і послугою; пошук за серійним номером, MAC або номером договору.
+- Експорт усієї поточної вибірки до CSV, сумісного з Excel.
+- CRUD довідника моделей, сортування за назвою і кількістю використань, захист моделей, що вже використовуються в історичних записах.
+- Імпорт моделей з Excel `.xlsx`: аркуш `Models` або `Моделі`, колонки `name`, `device_type`, `service`.
+- Статистика за днями або місяцями, операціями, послугами та популярними моделями.
+
+### Інтерфейс і безпека даних
+
+- Українська, English і Polski; якщо мову не задано вручну, застосовується мова ОС.
+- Системна, світла й темна теми; стилі іконок: системний, modern, classic, Windows 98, Ubuntu 22.
+- Дані, налаштування та журнал запуску зберігаються в каталозі даних користувача, а не в теці інсталяції.
+- Автоматичне оновлення Windows з GitHub Release, SHA-256 перевіркою інсталятора та forward-only SQLite-міграціями без стирання даних. Для Linux доступний DEB-пакет і ручне оновлення.
+
+### Локальна API-інтеграція для BAS/1C
+
+У налаштуваннях можна увімкнути локальний API. Він слухає тільки `127.0.0.1` (типовий порт `4556`) і не відкриває порт у локальній мережі чи інтернеті.
+
+- Окремі Bearer-ключі: назва, примітка, строк дії, відкликання й індивідуальний ліміт від 5 запитів/с до 1 запиту за 2 с.
+- Журнал API-операцій.
+- CRUD маршрутів для моделей і обладнання.
+- OpenAPI: `http://127.0.0.1:4556/api/v1/openapi.json`.
+- Swagger: `http://127.0.0.1:4556/api/v1/docs`.
+- Відповіді обладнання повертають лише `source_image_name`, а не локальний шлях. Фото перевіряється через `GET /api/v1/image/check/{record_id}` і отримується потоком через `POST /api/v1/image/get` з тілом `{"record_id": 123}`. `record_id` — це `id` запису обладнання, не `device_model_id`; назва файлу передається заголовком `Content-Disposition`.
+
+Усі маршрути, крім `GET /api/v1/health`, потребують `Authorization: Bearer sv_...`.
+
+## Швидкий запуск для розробки
 
 ```powershell
 python -m venv .venv
@@ -18,14 +51,29 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m serial_vision.main
 ```
 
-Or use `make install` and `make run` where GNU Make is available.
+У Linux використовуйте еквівалентні команди з `python3` і `.venv/bin/python`.
 
-The application stores its SQLite database and preferences in the per-user app-data
-directory. OCR uses the bundled local RapidOCR engine; no external executable is required.
+## Перевірки
 
-## Project layout
+```powershell
+.\.venv\Scripts\python.exe -m compileall -q application
+.\.venv\Scripts\python.exe -m unittest discover -s application/tests -v
+```
 
-- `application/` — application code and tests
-- `documents/` — architecture and migration notes
-- `tools/` — standalone migration and packaging helpers
-- `scripts/` — local development commands
+## Встановлення та релізи
+
+Готові Windows EXE/MSI, Windows ZIP і Linux DEB доступні на [GitHub Releases](https://github.com/homeandriy/serial_number_pythom/releases). Інсталятор Windows має три мови: українську, англійську та польську.
+
+## Документація
+
+- [Сценарій розпізнавання, обліку та локального API](documents/equipment-recognition.md)
+- [Посібник користувача українською](documents/serial-vision-user-guide.uk.docx)
+
+## Структура проєкту
+
+- `application/` — код застосунку та тести.
+- `application/serial_vision/assets/` — стилі, іконки, Swagger і довідка.
+- `documents/` — сценарії, технічна документація та посібник.
+- `installer/` — конфігурація Windows-інсталятора.
+- `scripts/` — локальні допоміжні скрипти.
+- `tools/` — пакування та інші інструменти розробки.

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from serial_vision.database import Database
 from serial_vision.i18n import system_locale
+from serial_vision.model_import import read_models_xlsx
 from serial_vision.ai_vision import AiVisionRecognizer
 
 
@@ -157,6 +158,20 @@ class SerialVisionService:
             self._database.save_model(model_id, name, device_type, service)
         except sqlite3.IntegrityError as error:
             raise ValueError("model_exists") from error
+
+    def import_models_xlsx(self, path: Path) -> dict[str, object]:
+        imported = read_models_xlsx(path)
+        existing = {(str(row["name"]).casefold(), str(row["device_type"]), str(row["service"])) for row in self.models()}
+        added = duplicates = 0
+        for model in imported.models:
+            key = (model.name.casefold(), model.device_type, model.service)
+            if key in existing:
+                duplicates += 1
+                continue
+            self.add_model(model.name, model.device_type, model.service)
+            existing.add(key)
+            added += 1
+        return {"added": added, "duplicates": duplicates, "invalid_rows": imported.errors}
 
     def delete_model(self, model_id: int) -> None:
         try:

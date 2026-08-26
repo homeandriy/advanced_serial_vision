@@ -320,7 +320,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(filters); add = button(page, "save", self.tr("add_record")); add.clicked.connect(lambda: self.open_equipment_dialog("")); layout.addWidget(add); self.devices_table = self.table([self.tr(key) for key in ("date_time", "contract", "operation", "recognized_text", "model", "type", "service", "images")] + [""]); self.devices_table.cellDoubleClicked.connect(lambda row, _: self.edit_equipment(row)); layout.addWidget(self.devices_table); equipment_pager = QHBoxLayout(); self.equipment_previous = button(page, "previous", self.tr("previous_page")); self.equipment_previous.clicked.connect(lambda: self.change_equipment_page(-1)); self.equipment_page_label = QLabel(); self.equipment_next = button(page, "next", self.tr("next_page")); self.equipment_next.clicked.connect(lambda: self.change_equipment_page(1)); equipment_pager.addWidget(self.equipment_previous); equipment_pager.addWidget(self.equipment_page_label); equipment_pager.addWidget(self.equipment_next); layout.addLayout(equipment_pager); return page
 
     def models(self) -> QWidget:
-        page = QWidget(); layout = QVBoxLayout(page); controls = QHBoxLayout(); add = button(page, "save", self.tr("add_model")); add.clicked.connect(self.add_model); controls.addWidget(add); controls.addWidget(self.help_button("models", "models")); controls.addStretch(); layout.addLayout(controls)
+        page = QWidget(); layout = QVBoxLayout(page); controls = QHBoxLayout(); add = button(page, "save", self.tr("add_model")); add.clicked.connect(self.add_model); import_button = button(page, "open", self.tr("import_models")); import_button.clicked.connect(self.import_models); controls.addWidget(add); controls.addWidget(import_button); controls.addWidget(self.help_button("models", "models")); controls.addStretch(); layout.addLayout(controls)
         self.models_table = self.table([self.tr("model"), self.tr("type"), self.tr("service"), self.tr("usage_count"), self.tr("actions")]); self.models_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch); self.models_table.setSortingEnabled(True); self.models_table.cellDoubleClicked.connect(lambda row, _: self.edit_model(row)); layout.addWidget(self.models_table); return page
 
     def statistics(self) -> QWidget:
@@ -671,6 +671,19 @@ class MainWindow(QMainWindow):
             delete = button(actions, "delete", self.tr("delete")); delete.clicked.connect(lambda _, identifier=model["id"]: self.delete_model(identifier))
             action_layout.addWidget(edit); action_layout.addWidget(delete); self.models_table.setCellWidget(row, 4, actions)
         self.models_table.setSortingEnabled(True); self.models_table.sortItems(0, Qt.SortOrder.AscendingOrder)
+
+    def import_models(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, self.tr("import_models"), "", "Excel (*.xlsx)")
+        if not path:
+            return
+        try:
+            result = self.service.import_models_xlsx(Path(path))
+        except ValueError as error:
+            self.error(self.tr(str(error)))
+            return
+        self.refresh_models()
+        self.refresh_equipment()
+        QMessageBox.information(self, self.tr("import_models"), self.tr("model_import_summary", added=str(result["added"]), duplicates=str(result["duplicates"]), invalid=str(len(result["invalid_rows"]))))
 
     def add_model(self) -> None:
         self.open_model_dialog()
