@@ -97,8 +97,9 @@ class Database:
             conditions.append("service = ?")
             params.append(service)
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        qualified_where = where.replace("device_type", "m.device_type").replace("service", "m.service")
         with self.connection() as db:
-            return db.execute(f"SELECT * FROM device_models {where} ORDER BY name", params).fetchall()
+            return db.execute(f"SELECT m.*, COUNT(d.id) AS usage_count FROM device_models m LEFT JOIN devices d ON d.device_model_id = m.id {qualified_where} GROUP BY m.id ORDER BY m.name COLLATE NOCASE", params).fetchall()
 
     def popular_models(self, limit: int = 10) -> list[sqlite3.Row]:
         with self.connection() as db:
@@ -163,6 +164,11 @@ class Database:
         local = datetime.fromisoformat(f"{value}T23:59:59" if end else f"{value}T00:00:00")
         return local.replace(tzinfo=ZoneInfo("Europe/Kyiv")).astimezone(UTC).isoformat()
 
+    def source_image_path(self, device_id: int) -> str | None:
+        with self.connection() as db:
+            row = db.execute("SELECT source_image_path FROM devices WHERE id = ?", (device_id,)).fetchone()
+        return None if row is None else row["source_image_path"]
+
     def save_device(self, device_id: int | None, data: dict[str, object]) -> None:
         values = (
             str(data["recognized_text"]).strip(),
@@ -199,6 +205,37 @@ class Database:
         with self.connection() as db:
             return db.execute("""SELECT substr(d.registered_at, 1, 7) AS period, d.operation_type, COUNT(*) AS total
                 FROM devices d GROUP BY period, d.operation_type ORDER BY period""").fetchall()
+
+
+    def create_api_key(self, name: str, note: str, token_hash: str, token_prefix: str, expires_at: str | None, min_interval_ms: int) -> str:
+        identifier = str(uuid.uuid4()); now = datetime.now(UTC).isoformat()
+        with self.connection() as db:
+            db.execute("INSERT INTO api_keys(id, name, note, token_hash, token_prefix, expires_at, min_interval_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (identifier, name, note, token_hash, token_prefix, expires_at, min_interval_ms, now))
+        return identifier
+
+    def api_keys(self) -> list[sqlite3.Row]:
+        with self.connection() as db:
+            return db.execute("SELECT id, name, note, token_prefix, expires_at, min_interval_ms, created_at, revoked_at, last_used_at FROM api_keys ORDER BY created_at DESC").fetchall()
+
+    def api_key_by_hash(self, token_hash: str) -> sqlite3.Row | None:
+        with self.connection() as db:
+            return db.execute("SELECT * FROM api_keys WHERE token_hash = ?", (token_hash,)).fetchone()
+
+    def revoke_api_key(self, key_id: str) -> None:
+        with self.connection() as db:
+            db.execute("UPDATE api_keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", (datetime.now(UTC).isoformat(), key_id))
+
+    def touch_api_key(self, key_id: str) -> None:
+        with self.connection() as db:
+            db.execute("UPDATE api_keys SET last_used_at = ? WHERE id = ?", (datetime.now(UTC).isoformat(), key_id))
+
+    def audit_api(self, key_id: str | None, method: str, path: str, status: int, client_address: str, detail: str = "") -> None:
+        with self.connection() as db:
+            db.execute("INSERT INTO api_audit(api_key_id, requested_at, method, path, status, client_address, detail) VALUES (?, ?, ?, ?, ?, ?, ?)", (key_id, datetime.now(UTC).isoformat(), method, path, status, client_address, detail[:500]))
+
+    def api_audit(self, limit: int = 200) -> list[sqlite3.Row]:
+        with self.connection() as db:
+            return db.execute("SELECT a.*, k.name AS key_name, k.token_prefix FROM api_audit a LEFT JOIN api_keys k ON k.id = a.api_key_id ORDER BY a.id DESC LIMIT ?", (limit,)).fetchall()
 
 
 def migrate_001_initial_schema(db: sqlite3.Connection) -> None:
@@ -245,10 +282,24 @@ def migrate_002_device_search_index(db: sqlite3.Connection) -> None:
     db.execute("CREATE INDEX IF NOT EXISTS devices_recognized_text_idx ON devices(recognized_text)")
 
 
-SCHEMA_VERSION = 2
+def migrate_003_local_api(db: sqlite3.Connection) -> None:
+    db.execute("CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, name TEXT NOT NULL, note TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, token_prefix TEXT NOT NULL, expires_at TEXT, created_at TEXT NOT NULL, revoked_at TEXT, last_used_at TEXT)")
+    db.execute("CREATE TABLE IF NOT EXISTS api_audit (id INTEGER PRIMARY KEY, api_key_id TEXT REFERENCES api_keys(id) ON DELETE SET NULL, requested_at TEXT NOT NULL, method TEXT NOT NULL, path TEXT NOT NULL, status INTEGER NOT NULL, client_address TEXT NOT NULL, detail TEXT NOT NULL)")
+    db.execute("CREATE INDEX IF NOT EXISTS api_audit_requested_at_idx ON api_audit(requested_at)")
+
+
+def migrate_004_api_key_rate_limit(db: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in db.execute("PRAGMA table_info(api_keys)").fetchall()}
+    if "min_interval_ms" not in columns:
+        db.execute("ALTER TABLE api_keys ADD COLUMN min_interval_ms INTEGER NOT NULL DEFAULT 500")
+
+
+SCHEMA_VERSION = 4
 MIGRATIONS: tuple[tuple[int, Callable[[sqlite3.Connection], None]], ...] = (
     (1, migrate_001_initial_schema),
     (2, migrate_002_device_search_index),
+    (3, migrate_003_local_api),
+    (4, migrate_004_api_key_rate_limit),
 )
 
 

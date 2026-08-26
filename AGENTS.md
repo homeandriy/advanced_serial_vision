@@ -20,8 +20,8 @@ processes behind focused service classes.
 
 The central user scenario is documented in
 [documents/equipment-recognition.md](documents/equipment-recognition.md). Update
-it before changing OCR, equipment records, source-photo links, validation, or
-export behavior.
+it before changing OCR, equipment records, source-photo links, validation, export
+behavior, updates, appearance settings, or local API integration.
 
 ## UI and accessibility
 

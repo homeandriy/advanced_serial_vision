@@ -1,3 +1,9 @@
 QLabel#imagePreview {
     border: 1px solid palette(mid);
 }
+
+QTabBar::tab { min-height: 32px; min-width: 135px; padding: 8px 14px; }
+QPushButton[icon_style="modern"] { border-radius: 7px; padding: 6px 10px; }
+QPushButton[icon_style="classic"] { border-radius: 2px; padding: 4px 7px; }
+QPushButton[icon_style="windows98"] { border-radius: 0; border-width: 2px; padding: 3px 6px; }
+QPushButton[icon_style="ubuntu22"] { border-radius: 9px; padding: 6px 10px; }

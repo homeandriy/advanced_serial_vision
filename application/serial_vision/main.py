@@ -10,7 +10,9 @@ from PySide6.QtWidgets import QApplication
 
 from serial_vision.application_service import SerialVisionService
 from serial_vision.database import Database
+from serial_vision.ui.buttons import apply_button_icons
 from serial_vision.ui.main_window import MainWindow
+from serial_vision.ui.theme import apply_theme
 
 
 def main() -> int:
@@ -25,10 +27,11 @@ def main() -> int:
     app.setApplicationName("Serial Vision")
     app.setOrganizationName("Serial Vision")
     app.setQuitOnLastWindowClosed(False)
-    stylesheet = Path(__file__).with_name("assets").joinpath("app.qss").read_text(encoding="utf-8")
-    app.setStyleSheet(stylesheet)
     data_directory = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation))
-    window = MainWindow(SerialVisionService(Database(data_directory / "serial-vision.sqlite3")))
+    service = SerialVisionService(Database(data_directory / "serial-vision.sqlite3"))
+    apply_button_icons(service.icon_style())
+    apply_theme(app, service.theme())
+    window = MainWindow(service)
     window.show()
     return app.exec()
 

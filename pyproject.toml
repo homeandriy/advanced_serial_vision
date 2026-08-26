@@ -29,7 +29,7 @@ where = ["application"]
 version = {file = ["VERSION"]}
 
 [tool.setuptools.package-data]
-serial_vision = ["assets/*.qss", "assets/*.png", "assets/*.ico"]
+serial_vision = ["assets/*.qss", "assets/*.png", "assets/*.ico", "assets/*.html", "assets/icons/*/*.svg", "assets/help/*.md"]
 
 [tool.ruff]
 line-length = 100

@@ -21,9 +21,17 @@ model in v0.1.0; the Windows user who launches it is the operator.
 3. The operator corrects text, selects a model and saves a new equipment record.
 4. The SQLite transaction stores the immutable source-photo path reference and the
    operation data. The UI refreshes the equipment list and statistics.
-5. When an AI profile is selected, selecting an image submits the same prepared
-   image to that user-configured provider; its API key is retrieved only from the
-   operating-system credential store and is never persisted in SQLite.
+5. AI recognition runs only when the operator explicitly presses the AI-recognition
+   button after selecting both a photo and an AI profile. The prepared image is sent
+   to the chosen provider; its API key is retrieved only from the operating-system
+   credential store and is never persisted in SQLite.
+6. The operator may choose a system, light or dark theme and one button/tab icon
+   style: system, modern, classic, Windows 98, or Ubuntu 22. The non-system styles are bundled local SVG sets under `assets/icons/` and apply to buttons and tabs. System theme follows
+   the OS at application startup; explicit operator choice is retained locally.
+7. The operator creates, edits, or deletes equipment models, including their type and
+   service. The models table shows each model usage count and supports sorting by
+   name and numeric usage count. A model still cannot be deleted while equipment
+   records reference it.
 
 ## Validation and guards
 
@@ -50,12 +58,61 @@ the selected photo and editable OCR text, receives clear errors when OCR or a
 directory is unavailable, and can subsequently find the record through the
 equipment filters and statistics screen. The application menu provides File,
 Edit, View and Help actions. Settings are grouped into independently saved
-interface, image-folder, update and AI-profile blocks.
+interface, appearance, image-folder and AI-profile blocks. The update source is not displayed or editable.
 
 ## Local diagnostics and updates
 
-Startup writes timestamped records to `startup.log` in per-user app data. The Help menu can open that file. A configured GitHub repository is checked in a worker thread one minute after startup and on demand. On Windows, a newer signed GitHub release EXE is downloaded to a temporary folder, verified against its SHA-256 release digest, then launched silently after the application closes; once setup succeeds, the helper relaunches the updated executable. The installer uses the stable AppId and does not touch per-user SQLite data. On the next start, forward-only SQLite migrations are applied transactionally using PRAGMA user_version; migrations never delete or recreate the database. On Linux, the operator receives a manual-installation notice because a DEB update can require system privileges.
+Startup attempts to write timestamped records to `startup.log` in per-user app data. If the OS denies access, startup continues without writing the log, retries once after the window appears, and shows the operator a modal message with the exact log folder and OS error. The Help menu can open that file when available. The fixed official GitHub repository is checked in a worker thread one minute after startup and on demand. On Windows, a newer signed GitHub release EXE is downloaded to a temporary folder, verified against its SHA-256 release digest, then launched silently after the application closes; once setup succeeds, the helper relaunches the updated executable. The installer uses the stable AppId and does not touch per-user SQLite data. On the next start, forward-only SQLite migrations are applied transactionally using PRAGMA user_version; migrations never delete or recreate the database. On Linux, the operator receives a manual-installation notice because a DEB update can require system privileges.
 
 ## Scalability and statistics
 
 The photo catalog is paged at 48 files. Equipment becomes paged at 100 rows only after 5,000 filtered rows, while export remains complete. Statistics aggregate receipt and issue operations, services and models in Europe/Kyiv and offer daily and monthly views.
+
+
+## Local BAS API integration
+
+### Actors, access and state
+
+A BAS integration running on the same workstation can call the optional REST API at
+`http://127.0.0.1:<port>/api/v1`. It is disabled by default and never binds to a
+network interface. The operator enables it in Settings → API integrations and selects a port (default
+`4556`). The separate API integrations tab is disabled until this setting is on.
+Each issued key receives its own request interval: 200 ms (5/s), 500 ms (default,
+2/s), 1 s, or 2 s. Changing API enablement or port restarts the local server.
+
+The operator creates a Bearer key with a required name, optional note and optional
+expiry timestamp. The raw key is shown once in a copyable dialog; only its SHA-256
+hash and non-secret prefix are stored. A key cannot be viewed again; replacement
+means issuing another key. The operator can revoke a key at any time. Expired or
+revoked keys cannot authorize requests.
+
+### API contract and validation
+
+Every endpoint except `GET /api/v1/health` requires `Authorization: Bearer <key>`.
+The rate limit is enforced per active key. `GET /models`, `POST /models`,
+`PATCH /models/{id}`, `DELETE /models/{id}` and matching `/equipment` endpoints
+use the same validation and database rules as the desktop UI. Model deletion is
+protected while equipment uses it. Equipment write payloads use stable codes
+`receipt`/`issue`, `modem`/`tuner`, `internet`/`television` and ISO 8601 timestamps.
+OpenAPI is available at `/api/v1/openapi.json`; `/api/v1/docs` contains BAS/1C
+request examples.
+
+Equipment responses do not disclose the local `source_image_path`; they expose
+only `source_image_name`, the file name with its extension. An authorized
+integration first calls `GET /api/v1/image/check/{record_id}` to learn whether
+the source file is still present and to receive its name. `record_id` is the
+`id` of an equipment record, never the `device_model_id`. It may then call
+`POST /api/v1/image/get` with `{ "record_id": <record_id> }`. When the file is
+available, the API responds with its original image bytes, `Content-Type`, and
+an RFC-compatible `Content-Disposition` attachment filename. BAS can save or
+stream that response without receiving a workstation path. A missing record
+returns 404; a missing, unreadable, or non-file source image returns 409. Both
+routes require the same Bearer key, per-key rate limit, and audit entry as the
+equipment routes.
+
+### Audit and expected UI
+
+Each HTTP request records its timestamp, authenticated key (when known), method,
+path, status code and local client address in the local audit log. The API
+integration UI lists keys without exposing secrets and supports issuing, copying
+the newly issued secret, revoking keys and viewing recent API operations.

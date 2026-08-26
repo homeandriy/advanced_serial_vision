@@ -19,7 +19,7 @@ class AiVisionRecognizer:
         if provider == "openai":
             payload = {"model": model, "store": False, "input": [{"role": "user", "content": [{"type": "input_text", "text": PROMPT}, {"type": "input_image", "image_url": f"data:image/jpeg;base64,{image}", "detail": "high"}]}]}
             response = self._post("https://api.openai.com/v1/responses", payload, {"Authorization": f"Bearer {token}"})
-            return self._require_text(str(response.get("output_text", "")).strip())
+            return self._require_text(self._openai_text(response))
         if provider == "anthropic":
             payload = {"model": model, "max_tokens": 1200, "messages": [{"role": "user", "content": [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image}}, {"type": "text", "text": PROMPT}]}]}
             response = self._post("https://api.anthropic.com/v1/messages", payload, {"x-api-key": token, "anthropic-version": "2023-06-01"})
@@ -43,6 +43,20 @@ class AiVisionRecognizer:
         if not text:
             raise RuntimeError("AI provider returned no recognized text.")
         return text
+
+    @staticmethod
+    def _openai_text(response: dict[str, object]) -> str:
+        direct = str(response.get("output_text", "")).strip()
+        if direct:
+            return direct
+        fragments: list[str] = []
+        for output in response.get("output", []):
+            if not isinstance(output, dict):
+                continue
+            for content in output.get("content", []):
+                if isinstance(content, dict) and content.get("type") in {"output_text", "text"}:
+                    fragments.append(str(content.get("text", "")))
+        return "\n".join(fragment for fragment in fragments if fragment).strip()
 
     @staticmethod
     def _post(url: str, payload: dict[str, object], headers: dict[str, str]) -> dict[str, object]:

@@ -74,6 +74,6 @@ class DatabaseTest(unittest.TestCase):
             finally:
                 connection.close()
 
-        self.assertEqual(2, version)
+        self.assertEqual(4, version)
         self.assertEqual(1, len(records))
         self.assertIn("devices_recognized_text_idx", indexes)

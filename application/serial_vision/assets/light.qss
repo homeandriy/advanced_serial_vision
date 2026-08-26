@@ -1,0 +1,7 @@
+QWidget { background: #f7f8fa; color: #202124; }
+QLineEdit, QTextEdit, QComboBox, QTableWidget, QDateEdit, QDateTimeEdit { background: #ffffff; color: #202124; border: 1px solid #b8c0cc; border-radius: 3px; padding: 3px; }
+QPushButton { background: #eef2f7; border: 1px solid #aeb9c8; border-radius: 3px; padding: 5px 8px; }
+QPushButton:hover { background: #dfe8f5; }
+QHeaderView::section { background: #e5eaf1; color: #202124; padding: 4px; border: 1px solid #b8c0cc; }
+QTabBar::tab { background: #e8edf3; color: #202124; padding: 6px 10px; }
+QTabBar::tab:selected { background: #ffffff; }

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import secrets
 import sqlite3
 from collections import defaultdict
 import keyring
@@ -28,10 +30,40 @@ class SerialVisionService:
         self._database.set_setting("image_directory", str(image_directory.resolve()))
 
     def update_repository(self) -> str:
-        return self._database.setting("github_repository").strip()
+        return "homeandriy/serial_number_pythom"
 
-    def save_update_repository(self, repository: str) -> None:
-        self._database.set_setting("github_repository", repository.strip())
+    def theme(self) -> str:
+        return self._database.setting("theme", "system")
+
+    def icon_style(self) -> str:
+        return self._database.setting("icon_style", "system")
+
+    def save_appearance(self, theme: str, icon_style: str) -> None:
+        self._database.set_setting("theme", theme)
+        self._database.set_setting("icon_style", icon_style)
+
+    def api_enabled(self) -> bool:
+        return self._database.setting("api_enabled", "no") == "yes"
+
+    def api_port(self) -> int:
+        try: return int(self._database.setting("api_port", "4556"))
+        except ValueError: return 4556
+
+    def save_api_settings(self, enabled: bool, port: int) -> None:
+        if not 1024 <= port <= 65535: raise ValueError("api_port_invalid")
+        self._database.set_setting("api_enabled", "yes" if enabled else "no")
+        self._database.set_setting("api_port", str(port))
+
+    def issue_api_key(self, name: str, note: str, expires_at: str | None, min_interval_ms: int) -> str:
+        if not name.strip(): raise ValueError("api_key_name_required")
+        if min_interval_ms not in (200, 500, 1000, 2000): raise ValueError("api_rate_invalid")
+        token = "sv_" + secrets.token_urlsafe(32)
+        self._database.create_api_key(name.strip(), note.strip(), hashlib.sha256(token.encode()).hexdigest(), token[:12], expires_at, min_interval_ms)
+        return token
+
+    def api_keys(self) -> list[sqlite3.Row]: return self._database.api_keys()
+    def revoke_api_key(self, key_id: str) -> None: self._database.revoke_api_key(key_id)
+    def api_audit(self) -> list[sqlite3.Row]: return self._database.api_audit()
 
     def setup_required(self) -> bool:
         return self._database.setting("license_accepted") != "yes" or self.image_directory() is None
@@ -48,9 +80,13 @@ class SerialVisionService:
     def startup_log_path(self) -> Path:
         return self._database.path.parent / "startup.log"
 
-    def log_startup(self, message: str) -> None:
-        with self.startup_log_path().open("a", encoding="utf-8") as log:
-            log.write(f"{datetime.now(UTC).isoformat()} {message}\n")
+    def log_startup(self, message: str) -> OSError | None:
+        try:
+            with self.startup_log_path().open("a", encoding="utf-8") as log:
+                log.write(f"{datetime.now(UTC).isoformat()} {message}\n")
+        except OSError as error:
+            return error
+        return None
 
     def locale(self) -> str:
         return self._database.setting("locale", system_locale()) if self._database.has_setting("locale") else system_locale()
@@ -72,6 +108,22 @@ class SerialVisionService:
         credential_id = f"serial-vision:{name}:{provider}:{model}"
         keyring.set_password("Serial Vision", credential_id, token)
         self._database.save_ai_agent(name, provider, model, credential_id)
+
+    def update_ai_agent(self, agent_id: str, name: str, provider: str, model: str, token: str) -> None:
+        agent = next((row for row in self.ai_agents() if row["id"] == agent_id), None)
+        if agent is None:
+            raise ValueError("ai_profile_missing")
+        credential_id = f"serial-vision:{name}:{provider}:{model}"
+        secret = token or keyring.get_password("Serial Vision", agent["credential_id"])
+        if not secret:
+            raise ValueError("profile_key_required")
+        keyring.set_password("Serial Vision", credential_id, secret)
+        self._database.save_ai_agent(name, provider, model, credential_id, agent_id)
+        if credential_id != agent["credential_id"]:
+            try:
+                keyring.delete_password("Serial Vision", agent["credential_id"])
+            except keyring.errors.PasswordDeleteError:
+                pass
 
     def delete_ai_agent(self, agent_id: str) -> None:
         agent = next((row for row in self.ai_agents() if row["id"] == agent_id), None)
@@ -97,6 +149,12 @@ class SerialVisionService:
     def add_model(self, name: str, device_type: str, service: str) -> None:
         try:
             self._database.save_model(None, name, device_type, service)
+        except sqlite3.IntegrityError as error:
+            raise ValueError("model_exists") from error
+
+    def update_model(self, model_id: int, name: str, device_type: str, service: str) -> None:
+        try:
+            self._database.save_model(model_id, name, device_type, service)
         except sqlite3.IntegrityError as error:
             raise ValueError("model_exists") from error
 
@@ -127,6 +185,10 @@ class SerialVisionService:
             value = value.replace(tzinfo=ZoneInfo("Europe/Kyiv"))
         copy["registered_at"] = value.astimezone(UTC).isoformat()
         return copy
+
+    def source_image_path(self, device_id: int) -> Path | None:
+        value = self._database.source_image_path(device_id)
+        return Path(value) if value else None
 
     def delete_device(self, device_id: int) -> None:
         self._database.delete_device(device_id)

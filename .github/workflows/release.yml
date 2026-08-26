@@ -2,8 +2,8 @@ name: Build and release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
 
 permissions:
   contents: write
@@ -22,11 +22,10 @@ jobs:
 
       - id: version
         env:
-          RUN_NUMBER: ${{ github.run_number }}
+          TAG_NAME: ${{ github.ref_name }}
         run: |
-          base_version="$(tr -d '\r\n' < VERSION)"
-          major_minor="${base_version%.*}"
-          version="${major_minor}.${RUN_NUMBER}"
+          version="$(tr -d '\r\n' < VERSION)"
+          test "$TAG_NAME" = "v$version"
           printf 'value=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
   windows:
