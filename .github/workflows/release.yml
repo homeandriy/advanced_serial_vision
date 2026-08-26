@@ -69,7 +69,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "WiX heat failed: $LASTEXITCODE" }
           & candle.exe "-dAppVersion=$env:VERSION" "-dSourceDir=$PWD/dist/SerialVision" -out dist/installer/ installer/serial-vision.wxs dist/installer/serial-vision-files.wxs
           if ($LASTEXITCODE -ne 0) { throw "WiX candle failed: $LASTEXITCODE" }
-          & light.exe -out "dist/installer/SerialVision-v$env:VERSION.msi" dist/installer/serial-vision.wixobj dist/installer/serial-vision-files.wixobj
+          & light.exe -b "$PWD/dist/SerialVision" -out "dist/installer/SerialVision-v$env:VERSION.msi" dist/installer/serial-vision.wixobj dist/installer/serial-vision-files.wixobj
           if ($LASTEXITCODE -ne 0) { throw "WiX light failed: $LASTEXITCODE" }
           Compress-Archive -Path dist/SerialVision/* -DestinationPath "dist/SerialVision-v$env:VERSION-windows-x64.zip" -Force
 
