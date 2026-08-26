@@ -169,6 +169,11 @@ class Database:
             row = db.execute("SELECT source_image_path FROM devices WHERE id = ?", (device_id,)).fetchone()
         return None if row is None else row["source_image_path"]
 
+    def device_recognized_text(self, device_id: int) -> str | None:
+        with self.connection() as db:
+            row = db.execute("SELECT recognized_text FROM devices WHERE id = ?", (device_id,)).fetchone()
+        return None if row is None else row["recognized_text"]
+
     def save_device(self, device_id: int | None, data: dict[str, object]) -> None:
         values = (
             str(data["recognized_text"]).strip(),

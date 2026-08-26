@@ -49,6 +49,8 @@ Receipt and Issue are the two operation directions. Current device types are Mod
 
 Double-click a table row or use Edit to correct a record. Removing a record is irreversible for the local database. For important history, follow your organisation's rules and verify the number, date and model before confirming.
 
+In the record form, the serial/MAC field has Get QR code and Get barcode buttons. They create a code only from the current text, open a preview, and can save a PNG. Creating a code does not save or modify the equipment record.
+
 <!-- section: search-export -->
 ## Search, filters and CSV export
 
@@ -98,3 +100,5 @@ Back up the application-data folder and keep original photographs in reliable st
 Enable the local API in Settings, create a Bearer key in API integrations, and copy it once. Use Authorization: Bearer sv_... in BAS or Postman. Example: GET http://127.0.0.1:4556/api/v1/equipment. Swagger: http://127.0.0.1:4556/api/v1/docs.
 
 Equipment responses expose only `source_image_name`, never the local file path. Call `GET /api/v1/image/check/{record_id}` first. `record_id` is the `id` of an equipment record, not `device_model_id`. When it returns `available: true`, send `POST /api/v1/image/get` with `{ "record_id": 123 }`. The response streams the image bytes and provides the original filename with extension in the standard `Content-Disposition` HTTP header.
+
+To obtain a code for an existing equipment record through the API, send `POST /api/v1/code/get` with JSON `{ "record_id": 123, "type": "qrcode" }` or `{ "record_id": 123, "type": "barcode" }`. `record_id` is the equipment record `id`, not `device_model_id`. The response is a PNG stream: `barcode` uses Code 128, and a name such as `qrcode_AABBCCDDEEFF_14_30_27_08_2026.png` or `barcode_AABBCCDDEEFF_14_30_27_08_2026.png` is sent in `Content-Disposition`. The code is generated from `recognized_text` and is not separately stored in the database.

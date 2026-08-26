@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QPushButton, QStyle, QWidget
+from PySide6.QtWidgets import QApplication, QPushButton, QStyle, QToolButton, QWidget
 
 
 BUTTONS: dict[str, QStyle.StandardPixmap] = {
@@ -28,6 +28,8 @@ BUTTONS: dict[str, QStyle.StandardPixmap] = {
     "statistics": QStyle.StandardPixmap.SP_FileDialogInfoView,
     "settings": QStyle.StandardPixmap.SP_FileDialogListView,
     "api_integrations": QStyle.StandardPixmap.SP_DialogHelpButton,
+    "generate_qr": QStyle.StandardPixmap.SP_FileDialogContentsView,
+    "generate_barcode": QStyle.StandardPixmap.SP_FileDialogDetailedView,
 }
 
 
@@ -37,6 +39,18 @@ def button(parent: QWidget, action: str, caption: str, tooltip: str | None = Non
     _set_icon(control, action)
     control.setToolTip(tooltip or caption)
     control.setAccessibleName(caption)
+    return control
+
+
+def compact_button(parent: QWidget, action: str, tooltip: str) -> QToolButton:
+    control = QToolButton(parent)
+    control.setAutoRaise(True)
+    control.setProperty("button_action", action)
+    control.setProperty("compact_action", True)
+    control.setFixedSize(24, 24)
+    _set_icon(control, action)
+    control.setToolTip(tooltip)
+    control.setAccessibleName(tooltip)
     return control
 
 
@@ -54,7 +68,7 @@ def apply_button_icons(style: str) -> None:
         return
     app.setProperty("icon_style", style)
     for widget in app.allWidgets():
-        if isinstance(widget, QPushButton):
+        if isinstance(widget, (QPushButton, QToolButton)):
             action = widget.property("button_action")
             if action:
                 _set_icon(widget, str(action))
@@ -67,7 +81,7 @@ def icon_for(parent: QWidget, action: str) -> QIcon:
     return QIcon(str(asset)) if style != "system" and asset.is_file() else parent.style().standardIcon(BUTTONS[action])
 
 
-def _set_icon(control: QPushButton, action: str) -> None:
+def _set_icon(control: QPushButton | QToolButton, action: str) -> None:
     app = QApplication.instance()
     style = str(app.property("icon_style")) if app is not None and app.property("icon_style") else "system"
     control.setProperty("icon_style", style)

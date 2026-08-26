@@ -7,3 +7,5 @@ QPushButton[icon_style="modern"] { border-radius: 7px; padding: 6px 10px; }
 QPushButton[icon_style="classic"] { border-radius: 2px; padding: 4px 7px; }
 QPushButton[icon_style="windows98"] { border-radius: 0; border-width: 2px; padding: 3px 6px; }
 QPushButton[icon_style="ubuntu22"] { border-radius: 9px; padding: 6px 10px; }
+QToolButton[compact_action="true"] { min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; padding: 0; border: none; }
+QToolButton[compact_action="true"]:hover { border: none; border-radius: 3px; background: palette(alternate-base); }

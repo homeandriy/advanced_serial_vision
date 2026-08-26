@@ -57,6 +57,8 @@ class LocalApiServer:
             status, payload = self.dispatch(request.command, path, parse_qs(parsed.query), self.body(request))
             if isinstance(payload, ImageStream):
                 return self.file_reply(request, status, payload)
+            if isinstance(payload, GeneratedCodeStream):
+                return self.generated_code_reply(request, status, payload)
             return self.reply(request, status, payload)
         except ApiError as error:
             status, detail = error.status, error.message; return self.reply(request, status, {"error": detail})
@@ -95,6 +97,8 @@ class LocalApiServer:
             return self.equipment(method, identifier, query, data)
         if resource == "image":
             return self.image(method, parts, data)
+        if resource == "code":
+            return self.code(method, parts, data)
         raise ApiError(404, "Not found")
 
     def models(self, method: str, identifier: int | None, data: dict[str, object]) -> tuple[int, object]:
@@ -136,6 +140,27 @@ class LocalApiServer:
             content_type = mimetypes.guess_type(image_path.name)[0] or "application/octet-stream"
             return 200, ImageStream(image_path, content_type)
         raise ApiError(405, "Method not allowed")
+
+    def code(self, method: str, parts: list[str], data: dict[str, object]) -> tuple[int, object]:
+        if method != "POST" or len(parts) != 4 or parts[3] != "get":
+            raise ApiError(405, "Method not allowed")
+        try:
+            record_id = int(data["record_id"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise ApiError(422, "record_id must be an integer") from error
+        content = self.service.device_recognized_text(record_id)
+        if content is None:
+            raise ApiError(404, "Equipment record not found")
+        try:
+            image_data = self.service.generate_code_png(content, str(data["type"]))
+            filename = self.service.generated_code_filename(content, str(data["type"]))
+        except KeyError as error:
+            raise ApiError(422, "type must be qrcode or barcode") from error
+        except ValueError as error:
+            if str(error) == "code_type_invalid":
+                raise ApiError(422, "type must be qrcode or barcode") from error
+            raise ApiError(422, str(error)) from error
+        return 200, GeneratedCodeStream(image_data, filename)
 
     def available_image(self, record_id: int) -> Path:
         image_path = self.service.source_image_path(record_id)
@@ -193,6 +218,16 @@ class LocalApiServer:
                 request.wfile.write(chunk)
 
     @staticmethod
+    def generated_code_reply(request: BaseHTTPRequestHandler, status: int, image: "GeneratedCodeStream") -> None:
+        filename = quote(image.filename)
+        request.send_response(status)
+        request.send_header("Content-Type", "image/png")
+        request.send_header("Content-Length", str(len(image.data)))
+        request.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{filename}")
+        request.end_headers()
+        request.wfile.write(image.data)
+
+    @staticmethod
     def html(request: BaseHTTPRequestHandler, content: str) -> None:
         data = content.encode(); request.send_response(200); request.send_header("Content-Type", "text/html; charset=utf-8"); request.send_header("Content-Length", str(len(data))); request.end_headers(); request.wfile.write(data)
     def openapi(self) -> dict[str, object]:
@@ -242,10 +277,19 @@ class LocalApiServer:
             "required": ["record_id"],
             "properties": {"record_id": {"type": "integer", "example": 1, "description": "Equipment record id, not device_model_id."}},
         }
+        code_get = {
+            "type": "object",
+            "required": ["record_id", "type"],
+            "properties": {
+                "record_id": {"type": "integer", "example": 1, "description": "Equipment record id, not device_model_id."},
+                "type": {"type": "string", "enum": ["qrcode", "barcode"], "description": "barcode uses Code 128."},
+            },
+        }
         error = {"type": "object", "properties": {"error": {"type": "string", "example": "Bearer token required"}}}
         response = lambda description, schema: {"description": description, "content": {"application/json": {"schema": schema}}}
         errors = {
             "401": response("Missing, expired or revoked Bearer key", error),
+            "404": response("Equipment record was not found", error),
             "409": response("Source image is unavailable", error),
             "422": response("Payload validation failed", error),
             "429": response("The key rate limit was exceeded", error),
@@ -261,7 +305,7 @@ class LocalApiServer:
             "security": [{"bearerAuth": []}],
             "components": {
                 "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "API key", "description": "Paste the sv_ key issued by Serial Vision."}},
-                "schemas": {"Model": model, "Equipment": equipment, "EquipmentWrite": equipment_write, "ImageStatus": image_status, "ImageGet": image_get, "Error": error},
+                "schemas": {"Model": model, "Equipment": equipment, "EquipmentWrite": equipment_write, "ImageStatus": image_status, "ImageGet": image_get, "CodeGet": code_get, "Error": error},
             },
             "paths": {
                 "/health": {"get": {"tags": ["Application Routes"], "summary": "API health", "security": [], "responses": {"200": response("API is running", {"type": "object", "properties": {"status": {"type": "string", "example": "ok"}}})}}},
@@ -287,6 +331,9 @@ class LocalApiServer:
                 "/image/get": {
                     "post": {"tags": ["Application Routes"], "summary": "Download source image", "description": "Use an equipment record id. The response is a binary stream; read the original filename with extension from the Content-Disposition header.", "requestBody": body(image_get), "responses": {"200": {"description": "Image byte stream; filename is in the standard Content-Disposition header", "headers": {"Content-Disposition": {"schema": {"type": "string"}, "description": "Original file name with extension (RFC-compatible attachment filename)"}}, "content": {"image/*": {"schema": {"type": "string", "format": "binary"}}}}, **errors}},
                 },
+                "/code/get": {
+                    "post": {"tags": ["Application Routes"], "summary": "Generate QR or Code 128 barcode", "description": "record_id is the equipment record id, not device_model_id. Generates a PNG from recognized_text without changing the record. The filename is returned in Content-Disposition.", "requestBody": body(code_get), "responses": {"200": {"description": "Generated PNG byte stream. barcode uses Code 128.", "headers": {"Content-Disposition": {"schema": {"type": "string"}, "description": "Generated filename: qrcode_<code>_<H_M_d_m_Y>.png or barcode_<code>_<H_M_d_m_Y>.png."}}, "content": {"image/png": {"schema": {"type": "string", "format": "binary"}}}}, **errors}},
+                },
             },
         }
 
@@ -300,6 +347,12 @@ class ImageStream:
     def __init__(self, path: Path, content_type: str) -> None:
         self.path = path
         self.content_type = content_type
+
+
+class GeneratedCodeStream:
+    def __init__(self, data: bytes, filename: str) -> None:
+        self.data = data
+        self.filename = filename
 
 
 class ApiError(Exception):

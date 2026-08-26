@@ -15,7 +15,7 @@ from serial_vision.i18n import SUPPORTED_LOCALES, t
 from serial_vision.image_catalog import ImageCatalog
 from serial_vision.local_api import LocalApiServer
 from serial_vision.ocr import RapidOcrRecognizer
-from serial_vision.ui.buttons import apply_button_icons, button, icon_for, icon_size
+from serial_vision.ui.buttons import apply_button_icons, button, compact_button, icon_for, icon_size
 from serial_vision.ui.help_dialog import HelpDialog
 from serial_vision.ui.theme import apply_theme
 from serial_vision.updates import ReleaseInfo, check_latest_release, launch_update
@@ -317,7 +317,7 @@ class MainWindow(QMainWindow):
         page = QWidget(); layout = QVBoxLayout(page); filters = QHBoxLayout(); self.date_from = QDateEdit(); self.date_from.setCalendarPopup(True); self.date_from.setSpecialValueText("—"); self.date_from.setDate(QDate(2000, 1, 1)); self.date_to = QDateEdit(); self.date_to.setCalendarPopup(True); self.date_to.setSpecialValueText("—"); self.date_to.setDate(QDate(2000, 1, 1)); self.model_filter = QComboBox(); self.operation_filter = QComboBox(); self.operation_filter.addItem(self.tr("operation"), ""); self.operation_filter.addItem(self.tr("receipt"), "receipt"); self.operation_filter.addItem(self.tr("issue"), "issue"); self.type_filter = QComboBox(); self.type_filter.addItem(self.tr("all_types"), ""); self.type_filter.addItem(self.tr("modem"), "modem"); self.type_filter.addItem(self.tr("tuner"), "tuner"); self.service_filter = QComboBox(); self.service_filter.addItem(self.tr("all_services"), ""); self.service_filter.addItem(self.tr("internet"), "internet"); self.service_filter.addItem(self.tr("television"), "television"); self.device_search = QLineEdit(); self.device_search.setPlaceholderText(self.tr("search")); refresh = button(page, "refresh", self.tr("refresh")); refresh.clicked.connect(self.refresh_equipment); export = button(page, "export", self.tr("export")); export.clicked.connect(self.export_equipment)
         for control in (self.date_from, self.date_to, self.model_filter, self.operation_filter, self.type_filter, self.service_filter, self.device_search, refresh, export): filters.addWidget(control)
         filters.addWidget(self.help_button("search-export", "equipment"))
-        layout.addLayout(filters); add = button(page, "save", self.tr("add_record")); add.clicked.connect(lambda: self.open_equipment_dialog("")); layout.addWidget(add); self.devices_table = self.table([self.tr(key) for key in ("date_time", "contract", "operation", "recognized_text", "model", "type", "service", "images")] + [""]); self.devices_table.cellDoubleClicked.connect(lambda row, _: self.edit_equipment(row)); layout.addWidget(self.devices_table); equipment_pager = QHBoxLayout(); self.equipment_previous = button(page, "previous", self.tr("previous_page")); self.equipment_previous.clicked.connect(lambda: self.change_equipment_page(-1)); self.equipment_page_label = QLabel(); self.equipment_next = button(page, "next", self.tr("next_page")); self.equipment_next.clicked.connect(lambda: self.change_equipment_page(1)); equipment_pager.addWidget(self.equipment_previous); equipment_pager.addWidget(self.equipment_page_label); equipment_pager.addWidget(self.equipment_next); layout.addLayout(equipment_pager); return page
+        layout.addLayout(filters); add = button(page, "save", self.tr("add_record")); add.clicked.connect(lambda: self.open_equipment_dialog("")); layout.addWidget(add); self.devices_table = self.table([self.tr(key) for key in ("date_time", "contract", "operation", "recognized_text", "model", "type", "service", "images")] + [""]); header = self.devices_table.horizontalHeader(); header.setStretchLastSection(False); header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch); header.setSectionResizeMode(8, QHeaderView.ResizeMode.Fixed); self.devices_table.setColumnWidth(8, 150); self.devices_table.cellDoubleClicked.connect(lambda row, _: self.edit_equipment(row)); layout.addWidget(self.devices_table); equipment_pager = QHBoxLayout(); self.equipment_previous = button(page, "previous", self.tr("previous_page")); self.equipment_previous.clicked.connect(lambda: self.change_equipment_page(-1)); self.equipment_page_label = QLabel(); self.equipment_next = button(page, "next", self.tr("next_page")); self.equipment_next.clicked.connect(lambda: self.change_equipment_page(1)); equipment_pager.addWidget(self.equipment_previous); equipment_pager.addWidget(self.equipment_page_label); equipment_pager.addWidget(self.equipment_next); layout.addLayout(equipment_pager); return page
 
     def models(self) -> QWidget:
         page = QWidget(); layout = QVBoxLayout(page); controls = QHBoxLayout(); add = button(page, "save", self.tr("add_model")); add.clicked.connect(self.add_model); import_button = button(page, "open", self.tr("import_models")); import_button.clicked.connect(self.import_models); controls.addWidget(add); controls.addWidget(import_button); controls.addWidget(self.help_button("models", "models")); controls.addStretch(); layout.addLayout(controls)
@@ -601,8 +601,33 @@ class MainWindow(QMainWindow):
         date_time = QDateTimeEdit(); date_time.setDateTime(QDateTime.currentDateTime()); date_time.setCalendarPopup(True)
         if existing is not None:
             contract.setText(existing["contract_number"] or ""); operation.setCurrentIndex(operation.findData(existing["operation_type"])); model.setCurrentIndex(model.findData(existing["device_model_id"])); date_time.setDateTime(QDateTime.fromString(existing["registered_at"], Qt.DateFormat.ISODate))
-        form.addRow(self.tr("recognized_text"), text_field); form.addRow(self.tr("contract"), contract); form.addRow(self.tr("operation"), operation); form.addRow(self.tr("model"), model); form.addRow(self.tr("date_time"), date_time)
+        code_field = QWidget(dialog); code_layout = QVBoxLayout(code_field); code_layout.setContentsMargins(0, 0, 0, 0); code_layout.addWidget(text_field); code_actions = QHBoxLayout(); qr = button(code_field, "generate_qr", self.tr("generate_qr")); qr.clicked.connect(lambda: self.show_generated_code(text_field.toPlainText(), "qr")); barcode = button(code_field, "generate_barcode", self.tr("generate_barcode")); barcode.clicked.connect(lambda: self.show_generated_code(text_field.toPlainText(), "barcode")); code_actions.addWidget(qr); code_actions.addWidget(barcode); code_actions.addStretch(); code_layout.addLayout(code_actions)
+        form.addRow(self.tr("recognized_text"), code_field); form.addRow(self.tr("contract"), contract); form.addRow(self.tr("operation"), operation); form.addRow(self.tr("model"), model); form.addRow(self.tr("date_time"), date_time)
         save = button(dialog, "save", self.tr("save")); save.clicked.connect(lambda: self.save_context_device(dialog, text_field, contract, operation, model, date_time, existing)); form.addRow(save); dialog.exec()
+
+    def show_generated_code(self, value: str, code_type: str) -> None:
+        try:
+            image_data = self.service.generate_code_png(value, code_type)
+            filename = self.service.generated_code_filename(value, code_type)
+        except ValueError as error:
+            self.error(self.tr(str(error)))
+            return
+        pixmap = QPixmap()
+        if not pixmap.loadFromData(image_data, "PNG"):
+            self.error(self.tr("code_type_invalid"))
+            return
+        title = self.tr("qrcode_title", code=value.strip()) if code_type in {"qr", "qrcode"} else self.tr("barcode_title", code=value.strip())
+        dialog = QDialog(self); dialog.setWindowTitle(title); layout = QVBoxLayout(dialog); preview = QLabel(dialog); preview.setAlignment(Qt.AlignmentFlag.AlignCenter); preview.setPixmap(pixmap); layout.addWidget(preview)
+        actions = QHBoxLayout(); save = button(dialog, "save", self.tr("save_png")); save.clicked.connect(lambda: self.save_generated_code(image_data, filename)); close = button(dialog, "close", self.tr("close")); close.clicked.connect(dialog.accept); actions.addWidget(save); actions.addWidget(close); layout.addLayout(actions); dialog.exec()
+
+    def save_generated_code(self, image_data: bytes, filename: str) -> None:
+        destination, _ = QFileDialog.getSaveFileName(self, self.tr("save_png"), filename, "PNG (*.png)")
+        if not destination:
+            return
+        try:
+            self.service.save_generated_code(Path(destination), image_data)
+        except OSError as error:
+            self.error(self.tr("code_save_failed", error=str(error)))
 
     def save_context_device(self, dialog: QDialog, text_field: QTextEdit, contract: QLineEdit, operation: QComboBox, model: QComboBox, date_time: QDateTimeEdit, existing=None) -> None:
         text = text_field.toPlainText().strip()
@@ -625,7 +650,15 @@ class MainWindow(QMainWindow):
         rows, self.equipment_pagination = self.service.devices(self.device_search.text().strip(), self.type_filter.currentData(), self.service_filter.currentData(), date_from, date_to, self.model_filter.currentData() or None, self.operation_filter.currentData(), getattr(self, "equipment_page", 1)); self.current_devices = rows; self.devices_table.setRowCount(len(rows)); pagination = self.equipment_pagination; self.equipment_page_label.setText(str(self.equipment_page) if pagination is None else str(pagination["page"]) + "/" + str(pagination["pages"])); self.equipment_previous.setEnabled(pagination is not None and pagination["page"] > 1); self.equipment_next.setEnabled(pagination is not None and pagination["page"] < pagination["pages"]); self.equipment_page = 1 if pagination is None else pagination["page"]
         for row, device in enumerate(rows):
             self.fill(self.devices_table, row, [self.service.display_time(device["registered_at"]), device["contract_number"] or "", self.tr(device["operation_type"]), device["recognized_text"], device["model_name"], self.tr(device["device_type"]), self.tr(device["service"]), device["source_image_path"] or "", ""]); self.devices_table.item(row, 0).setData(Qt.ItemDataRole.UserRole, device["id"])
-            actions = QWidget(); action_layout = QHBoxLayout(actions); action_layout.setContentsMargins(2, 0, 2, 0); edit = button(actions, "edit", self.tr("edit")); edit.clicked.connect(lambda _, index=row: self.edit_equipment(index)); delete = button(actions, "delete", self.tr("delete")); delete.clicked.connect(lambda _, index=row: self.delete_equipment(index)); action_layout.addWidget(edit); source = button(actions, "folder", self.tr("open_source_image")); source.clicked.connect(lambda _, index=row: self.open_source_image(index)); action_layout.addWidget(source); action_layout.addWidget(delete); self.devices_table.setCellWidget(row, 8, actions)
+            actions = QWidget(); actions.setFixedWidth(150); action_layout = QHBoxLayout(actions); action_layout.setContentsMargins(5, 0, 5, 0); action_layout.setSpacing(5); action_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            edit = compact_button(actions, "edit", self.tr("edit")); edit.clicked.connect(lambda _, index=row: self.edit_equipment(index))
+            source = compact_button(actions, "folder", self.tr("open_source_image")); source.clicked.connect(lambda _, index=row: self.open_source_image(index))
+            qr = compact_button(actions, "generate_qr", self.tr("generate_qr")); qr.clicked.connect(lambda _, index=row: self.show_generated_code(self.current_devices[index]["recognized_text"], "qr"))
+            barcode = compact_button(actions, "generate_barcode", self.tr("generate_barcode")); barcode.clicked.connect(lambda _, index=row: self.show_generated_code(self.current_devices[index]["recognized_text"], "barcode"))
+            delete = compact_button(actions, "delete", self.tr("delete")); delete.clicked.connect(lambda _, index=row: self.delete_equipment(index))
+            for control in (edit, source, qr, barcode, delete):
+                action_layout.addWidget(control)
+            self.devices_table.setCellWidget(row, 8, actions)
 
     def change_equipment_page(self, offset: int) -> None:
         if self.equipment_pagination is None:

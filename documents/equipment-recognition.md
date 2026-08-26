@@ -18,17 +18,18 @@ model in v0.1.0; the Windows user who launches it is the operator.
 1. The operator selects a photo from its dated preview card. OCR and barcode recognition start automatically; their result fields stay locked until the processing finishes. The source photo remains unchanged.
 2. OCR creates temporary processed variants only; they are removed when recognition
    completes.
-3. The operator corrects text, selects a model and saves a new equipment record.
-4. The SQLite transaction stores the immutable source-photo path reference and the
+3. The operator can generate a QR code or a Code 128 barcode from the current serial/MAC/text field before saving, or from the compact QR/barcode actions of an existing equipment row. Preview titles identify the code value; barcode titles also identify the Code 128 technology. The preview may be saved as a PNG named `qrcode_<sanitized-code>_<H_M_d_m_Y>.png` or `barcode_<sanitized-code>_<H_M_d_m_Y>.png`; generating or saving a code never changes the equipment record.
+4. The operator corrects text, selects a model and saves a new equipment record.
+5. The SQLite transaction stores the immutable source-photo path reference and the
    operation data. The UI refreshes the equipment list and statistics.
-5. AI recognition runs only when the operator explicitly presses the AI-recognition
+6. AI recognition runs only when the operator explicitly presses the AI-recognition
    button after selecting both a photo and an AI profile. The prepared image is sent
    to the chosen provider; its API key is retrieved only from the operating-system
    credential store and is never persisted in SQLite.
-6. The operator may choose a system, light or dark theme and one button/tab icon
+7. The operator may choose a system, light or dark theme and one button/tab icon
    style: system, modern, classic, Windows 98, or Ubuntu 22. The non-system styles are bundled local SVG sets under `assets/icons/` and apply to buttons and tabs. System theme follows
    the OS at application startup; explicit operator choice is retained locally.
-7. The operator creates, edits, or deletes equipment models, including their type and
+8. The operator creates, edits, or deletes equipment models, including their type and
    service. The models table shows each model usage count and supports sorting by
    name and numeric usage count. A model still cannot be deleted while equipment
    records reference it. The operator can import models from an XLSX worksheet named Models or Моделі with name, device_type and service columns. Only modem/tuner and internet/television are accepted; malformed rows are skipped and duplicate combinations remain unchanged.
@@ -37,6 +38,7 @@ model in v0.1.0; the Windows user who launches it is the operator.
 
 - Image paths must resolve inside the selected image folder.
 - A record requires non-empty recognized text and a known model.
+- QR and Code 128 generation require non-empty text. The generated preview uses only the value currently entered by the operator; it is not persisted unless the operator explicitly saves its PNG.
 - Model type and service are stable codes. A model is unique by name, type and service.
 - A missing source photo is not a reason to delete its related equipment record.
 - Deleting a photo, equipment record or model requires a confirmation. A model with
@@ -109,6 +111,15 @@ stream that response without receiving a workstation path. A missing record
 returns 404; a missing, unreadable, or non-file source image returns 409. Both
 routes require the same Bearer key, per-key rate limit, and audit entry as the
 equipment routes.
+
+An integration can generate a machine-readable code for an existing equipment
+record without accessing its source photo: `POST /api/v1/code/get` with
+`{ "record_id": <record_id>, "type": "qrcode" }` or
+`{ "record_id": <record_id>, "type": "barcode" }`. Here `record_id` is the
+equipment record `id`, never `device_model_id`. The API creates the PNG from that
+record's `recognized_text` and returns its bytes with `Content-Type: image/png`
+and an attachment `Content-Disposition` filename matching the desktop naming
+rule. `barcode` uses Code 128. The generated code is not stored in the database.
 
 ### Audit and expected UI
 

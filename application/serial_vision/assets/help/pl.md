@@ -49,6 +49,8 @@ Przyjęcie i Wydanie są kierunkami operacji. Dostępne typy to Modem i Tuner, a
 
 Kliknij dwukrotnie wiersz albo użyj Edytuj, aby poprawić rekord. Usunięcie rekordu jest nieodwracalne dla lokalnej bazy, dlatego przed potwierdzeniem sprawdź numer, datę i model.
 
+W formularzu rekordu pod polem numeru seryjnego/MAC są przyciski Uzyskaj kod QR i Uzyskaj kod kreskowy. Tworzą kod tylko z bieżącego tekstu, otwierają podgląd i pozwalają zapisać PNG. Utworzenie kodu nie zapisuje ani nie zmienia rekordu sprzętu.
+
 <!-- section: search-export -->
 ## Wyszukiwanie, filtry i eksport CSV
 
@@ -98,3 +100,5 @@ Twórz kopie katalogu danych programu i przechowuj oryginalne zdjęcia w bezpiec
 Włącz lokalne API w Ustawieniach, utwórz klucz Bearer na karcie Integracje API i skopiuj go tylko raz. Użyj Authorization: Bearer sv_... w BAS lub Postman. Przykład: GET http://127.0.0.1:4556/api/v1/equipment. Swagger: http://127.0.0.1:4556/api/v1/docs.
 
 Odpowiedzi sprzętu zwracają tylko `source_image_name`, nigdy lokalną ścieżkę pliku. Najpierw wywołaj `GET /api/v1/image/check/{record_id}`. `record_id` to `id` rekordu sprzętu, a nie `device_model_id`. Gdy odpowiedź zawiera `available: true`, wyślij `POST /api/v1/image/get` z `{ "record_id": 123 }`. Odpowiedź przesyła bajty obrazu, a oryginalna nazwa pliku z rozszerzeniem jest w standardowym nagłówku HTTP `Content-Disposition`.
+
+Aby pobrać kod dla istniejącego rekordu sprzętu przez API, wyślij `POST /api/v1/code/get` z JSON `{ "record_id": 123, "type": "qrcode" }` lub `{ "record_id": 123, "type": "barcode" }`. `record_id` to `id` rekordu sprzętu, a nie `device_model_id`. Odpowiedzią jest strumień PNG: `barcode` używa Code 128, a nazwa, np. `qrcode_AABBCCDDEEFF_14_30_27_08_2026.png` lub `barcode_AABBCCDDEEFF_14_30_27_08_2026.png`, jest przekazywana w `Content-Disposition`. Kod jest generowany z `recognized_text` i nie jest osobno zapisywany w bazie.

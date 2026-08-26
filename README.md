@@ -40,6 +40,7 @@
 - OpenAPI: `http://127.0.0.1:4556/api/v1/openapi.json`.
 - Swagger: `http://127.0.0.1:4556/api/v1/docs`.
 - Відповіді обладнання повертають лише `source_image_name`, а не локальний шлях. Фото перевіряється через `GET /api/v1/image/check/{record_id}` і отримується потоком через `POST /api/v1/image/get` з тілом `{"record_id": 123}`. `record_id` — це `id` запису обладнання, не `device_model_id`; назва файлу передається заголовком `Content-Disposition`.
+- QR/Code 128 PNG для запису обладнання генерується через `POST /api/v1/code/get` з тілом `{"record_id": 123, "type": "qrcode"}` або `{"record_id": 123, "type": "barcode"}`. Відповідь є потоком `image/png`; згенерована назва `qrcode_<код>_<H_M_d_m_Y>.png` або `barcode_<код>_<H_M_d_m_Y>.png` передається у `Content-Disposition`.
 
 Усі маршрути, крім `GET /api/v1/health`, потребують `Authorization: Bearer sv_...`.
 

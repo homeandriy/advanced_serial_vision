@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 from pathlib import Path
 
+from serial_vision.code_images import generated_code_filename, generate_code_png
 from serial_vision.database import Database
 from serial_vision.i18n import system_locale
 from serial_vision.model_import import read_models_xlsx
@@ -204,6 +205,19 @@ class SerialVisionService:
     def source_image_path(self, device_id: int) -> Path | None:
         value = self._database.source_image_path(device_id)
         return Path(value) if value else None
+
+    def generate_code_png(self, value: str, code_type: str) -> bytes:
+        return generate_code_png(value, code_type)
+
+    def generated_code_filename(self, value: str, code_type: str) -> str:
+        return generated_code_filename(value, code_type)
+
+    def device_recognized_text(self, device_id: int) -> str | None:
+        return self._database.device_recognized_text(device_id)
+
+    @staticmethod
+    def save_generated_code(destination: Path, image_data: bytes) -> None:
+        destination.write_bytes(image_data)
 
     def delete_device(self, device_id: int) -> None:
         self._database.delete_device(device_id)

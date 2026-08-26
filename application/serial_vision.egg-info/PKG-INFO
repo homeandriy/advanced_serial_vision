@@ -1,10 +1,12 @@
 Metadata-Version: 2.4
 Name: serial-vision
-Version: 0.1.0
+Version: 0.5.0
 Summary: Desktop application for recognizing and recording equipment serial numbers.
 Requires-Python: >=3.11
 Requires-Dist: PySide6<7,>=6.8
 Requires-Dist: Pillow>=10.0
+Requires-Dist: qrcode[pil]<9,>=8.0
+Requires-Dist: python-barcode[images]<1,>=0.15
 Requires-Dist: keyring<27,>=25
 Requires-Dist: rapidocr<4,>=3.4
 Requires-Dist: onnxruntime<2,>=1.20

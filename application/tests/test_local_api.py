@@ -6,7 +6,7 @@ from pathlib import Path
 
 from serial_vision.application_service import SerialVisionService
 from serial_vision.database import Database
-from serial_vision.local_api import ImageStream, LocalApiServer
+from serial_vision.local_api import GeneratedCodeStream, ImageStream, LocalApiServer
 
 
 class LocalApiImageTest(unittest.TestCase):
@@ -43,6 +43,19 @@ class LocalApiImageTest(unittest.TestCase):
         self.assertIsInstance(stream, ImageStream)
         self.assertEqual("label photo.jpg", stream.path.name)
         self.assertEqual(b"image-bytes", streamed_bytes)
+
+    def test_generates_code_stream_for_equipment_record(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            service = SerialVisionService(Database(Path(directory) / "database.sqlite3"))
+            model = service.models()[0]
+            service.add_device({"recognized_text": "AA:BB:CC:DD", "contract_number": "", "operation_type": "receipt", "source_image_path": "", "device_model_id": model["id"], "registered_at": "2026-08-26T12:00:00"})
+            record = service.all_filtered_devices(search="AA:BB")[0]
+            status, stream = LocalApiServer(service).code("POST", ["api", "v1", "code", "get"], {"record_id": record["id"], "type": "barcode"})
+
+        self.assertEqual(200, status)
+        self.assertIsInstance(stream, GeneratedCodeStream)
+        self.assertTrue(stream.data.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertRegex(stream.filename, r"^barcode_AABBCCDD_\d{2}_\d{2}_\d{2}_\d{2}_\d{4}\.png$")
 
 
 if __name__ == "__main__":

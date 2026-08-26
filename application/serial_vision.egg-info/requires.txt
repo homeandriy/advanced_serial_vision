@@ -1,5 +1,7 @@
 PySide6<7,>=6.8
 Pillow>=10.0
+qrcode[pil]<9,>=8.0
+python-barcode[images]<1,>=0.15
 keyring<27,>=25
 rapidocr<4,>=3.4
 onnxruntime<2,>=1.20
