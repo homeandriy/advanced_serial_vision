@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
 from pathlib import Path
 import subprocess
 import sys
-from PySide6.QtCore import QDate, QDateTime, QLocale, QSize, Qt, QUrl, QThread, Signal
+from PySide6.QtCore import QDate, QDateTime, QLocale, QSize, Qt, QTimer, QUrl, QThread, Signal
 from PySide6.QtGui import QAction, QDesktopServices, QIcon, QPixmap
 from PySide6.QtCharts import QBarCategoryAxis, QBarSeries, QBarSet, QChart, QChartView, QValueAxis
 from PySide6.QtWidgets import QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QDateEdit, QDateTimeEdit, QDialog, QFileDialog, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QScrollArea, QSplitter, QSystemTrayIcon, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QToolButton, QVBoxLayout, QWidget
@@ -14,7 +15,7 @@ from serial_vision.i18n import SUPPORTED_LOCALES, t
 from serial_vision.image_catalog import ImageCatalog
 from serial_vision.ocr import RapidOcrRecognizer
 from serial_vision.ui.buttons import button
-from serial_vision.updates import ReleaseInfo, check_latest_release
+from serial_vision.updates import ReleaseInfo, check_latest_release, launch_update
 
 
 class UpdateWorker(QThread):
@@ -61,7 +62,7 @@ class MainWindow(QMainWindow):
         super().__init__(); self.service = service; self.locale = service.locale(); self.catalog = ImageCatalog(service.image_directory()); self.selected_image: Path | None = None; self.image_page = 1; self.equipment_page = 1
         self.service.register_launch(); self.service.log_startup("Application startup started"); self.setWindowTitle(self.tr("app_name")); self.setWindowIcon(self.icon()); self.resize(1500, 920); self.create_tray(); self.create_menus(); self.recognition_generation = 0
         self.tabs = QTabWidget(); self.setCentralWidget(self.tabs); self.tabs.addTab(self.recognition(), self.tr("recognition")); self.tabs.addTab(self.equipment(), self.tr("equipment")); self.tabs.addTab(self.models(), self.tr("models")); self.tabs.addTab(self.statistics(), self.tr("statistics")); self.tabs.addTab(self.settings(), self.tr("settings")); self.refresh_images(); self.refresh_agents(); self.refresh_equipment(); self.refresh_models(); self.refresh_statistics()
-        self.statusBar().addPermanentWidget(QLabel(self.tr("developer"))); self.statusBar().addPermanentWidget(QLabel(self.tr("version", version=Path("VERSION").read_text().strip()))); self.service.log_startup("Main window is ready"); self.show_first_run_setup() if self.service.setup_required() else None
+        self.statusBar().addPermanentWidget(QLabel(self.tr("developer"))); self.statusBar().addPermanentWidget(QLabel(self.tr("version", version=Path("VERSION").read_text().strip()))); self.service.log_startup("Main window is ready"); QTimer.singleShot(60_000, self.check_updates_silently); self.show_first_run_setup() if self.service.setup_required() else None
 
     def tr(self, key: str, **values: str) -> str: return t(self.locale, key, **values)
     def icon(self) -> QIcon: return QIcon(str(Path(__file__).parents[1] / "assets" / "app-icon.png"))
@@ -112,22 +113,47 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, self.tr("help"), self.tr("select_text_to_copy"))
 
     def check_updates(self) -> None:
+        self.start_update_check(show_status=True)
+
+    def check_updates_silently(self) -> None:
+        self.start_update_check(show_status=False)
+
+    def start_update_check(self, show_status: bool) -> None:
         repository = self.service.update_repository()
         if not repository:
-            QMessageBox.information(self, self.tr("help"), self.tr("update_not_configured"))
+            if show_status:
+                QMessageBox.information(self, self.tr("help"), self.tr("update_not_configured"))
+            return
+        if getattr(self, "update_worker", None) and self.update_worker.isRunning():
             return
         self.update_worker = UpdateWorker(repository, Path("VERSION").read_text().strip(), self)
-        self.update_worker.checked.connect(self.update_checked)
-        self.update_worker.failed.connect(lambda error: QMessageBox.warning(self, self.tr("error"), error))
+        self.update_worker.checked.connect(lambda release: self.update_checked(release, show_status))
+        self.update_worker.failed.connect(lambda error: self.update_failed(error, show_status))
         self.update_worker.start()
 
-    def update_checked(self, release: ReleaseInfo | None) -> None:
+    def update_checked(self, release: ReleaseInfo | None, show_status: bool) -> None:
         if release is None:
-            QMessageBox.information(self, self.tr("help"), self.tr("update_not_found"))
+            if show_status:
+                QMessageBox.information(self, self.tr("help"), self.tr("update_not_found"))
             return
-        details = release.version + "\n\n" + release.changelog
-        if release.installer_url and QMessageBox.question(self, self.tr("help"), details) == QMessageBox.StandardButton.Yes:
-            QDesktopServices.openUrl(QUrl(release.installer_url))
+        if sys.platform == "win32" and release.installer_url:
+            try:
+                launch_update(release, os.getpid())
+            except RuntimeError as error:
+                if show_status:
+                    QMessageBox.warning(self, self.tr("error"), self.tr(str(error)))
+                return
+            self.service.log_startup(f"Starting automatic update to {release.version}")
+            self.close()
+            QApplication.quit()
+            return
+        if show_status:
+            QMessageBox.information(self, self.tr("help"), self.tr("update_available_manual", version=release.version))
+
+    def update_failed(self, error: str, show_status: bool) -> None:
+        self.service.log_startup(f"Update check failed: {error}")
+        if show_status:
+            QMessageBox.warning(self, self.tr("error"), error)
 
     def open_startup_log(self) -> None:
         self.service.log_startup("User opened startup log")
@@ -167,7 +193,7 @@ class MainWindow(QMainWindow):
     def recognition(self) -> QWidget:
         page = QWidget(); layout = QVBoxLayout(page); path = QHBoxLayout(); self.folder = QLineEdit(str(self.service.image_directory() or "")); self.folder.setReadOnly(True); open_folder = button(page, "folder", self.tr("open_folder")); open_folder.clicked.connect(self.open_folder); path.addWidget(self.folder); path.addWidget(open_folder); layout.addLayout(path)
         split = QSplitter(Qt.Orientation.Horizontal); photos = QWidget(); left = QVBoxLayout(photos); actions = QHBoxLayout()
-        for action, handler in (("refresh", self.refresh_images), ("rotate", self.rotate), ("delete", self.delete_image)):
+        for action, handler in (("refresh", self.refresh_images), ("open_image", self.open_selected_image), ("rotate", self.rotate), ("delete", self.delete_image)):
             control = button(photos, action, self.tr(action)); control.clicked.connect(handler); actions.addWidget(control)
         left.addWidget(QLabel(self.tr("images"))); left.addLayout(actions); pager = QHBoxLayout(); self.image_previous = button(photos, "previous", self.tr("previous_page")); self.image_previous.clicked.connect(lambda: self.change_image_page(-1)); self.image_page_label = QLabel(); self.image_next = button(photos, "next", self.tr("next_page")); self.image_next.clicked.connect(lambda: self.change_image_page(1)); pager.addWidget(self.image_previous); pager.addWidget(self.image_page_label); pager.addWidget(self.image_next); left.addLayout(pager)
         self.image_cards = QScrollArea(); self.image_cards.setWidgetResizable(True); self.image_cards_content = QWidget(); self.image_cards_layout = QVBoxLayout(self.image_cards_content); self.image_cards_layout.setAlignment(Qt.AlignmentFlag.AlignTop); self.image_cards.setWidget(self.image_cards_content); self.image_button_group = QButtonGroup(self); self.image_button_group.setExclusive(True); left.addWidget(self.image_cards, 1)
@@ -300,6 +326,10 @@ class MainWindow(QMainWindow):
     def required(self) -> bool:
         if self.selected_image is None: QMessageBox.warning(self, self.tr("error"), self.tr("no_image")); return False
         return True
+
+    def open_selected_image(self) -> None:
+        if self.required():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.selected_image)))
 
     def rotate(self) -> None:
         if self.required():

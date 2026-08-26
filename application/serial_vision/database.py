@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
 
 
 class Database:
@@ -23,49 +23,23 @@ class Database:
         connection.execute("PRAGMA foreign_keys = ON")
         try:
             yield connection
+        except Exception:
+            connection.rollback()
+            raise
+        else:
             connection.commit()
         finally:
             connection.close()
 
     def initialize(self) -> None:
         with self.connection() as db:
-            db.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS device_models (
-                    id INTEGER PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    device_type TEXT NOT NULL CHECK(device_type IN ('tuner', 'modem')),
-                    service TEXT NOT NULL CHECK(service IN ('internet', 'television')),
-                    UNIQUE(name, device_type, service)
-                );
-                CREATE TABLE IF NOT EXISTS devices (
-                    id INTEGER PRIMARY KEY,
-                    recognized_text TEXT NOT NULL,
-                    contract_number TEXT,
-                    operation_type TEXT NOT NULL CHECK(operation_type IN ('receipt', 'issue')),
-                    source_image_path TEXT,
-                    device_model_id INTEGER NOT NULL REFERENCES device_models(id) ON DELETE RESTRICT,
-                    registered_at TEXT NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS devices_registered_at_idx ON devices(registered_at);
-                CREATE TABLE IF NOT EXISTS ai_agents (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    provider TEXT NOT NULL CHECK(provider IN ('openai', 'anthropic', 'gemini')),
-                    model TEXT NOT NULL,
-                    credential_id TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS application_state (
-                    id INTEGER PRIMARY KEY CHECK(id = 1),
-                    launch_count INTEGER NOT NULL DEFAULT 0,
-                    updated_at TEXT NOT NULL
-                );
-                """
-            )
+            current_version = int(db.execute("PRAGMA user_version").fetchone()[0])
+            if current_version > SCHEMA_VERSION:
+                raise RuntimeError("The local database was created by a newer Serial Vision version.")
+            for version, migration in MIGRATIONS:
+                if version > current_version:
+                    migration(db)
+                    db.execute(f"PRAGMA user_version = {version}")
             count = db.execute("SELECT COUNT(*) FROM device_models").fetchone()[0]
             if count == 0:
                 db.executemany(
@@ -225,6 +199,57 @@ class Database:
         with self.connection() as db:
             return db.execute("""SELECT substr(d.registered_at, 1, 7) AS period, d.operation_type, COUNT(*) AS total
                 FROM devices d GROUP BY period, d.operation_type ORDER BY period""").fetchall()
+
+
+def migrate_001_initial_schema(db: sqlite3.Connection) -> None:
+    db.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS device_models (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            device_type TEXT NOT NULL CHECK(device_type IN ('tuner', 'modem')),
+            service TEXT NOT NULL CHECK(service IN ('internet', 'television')),
+            UNIQUE(name, device_type, service)
+        );
+        CREATE TABLE IF NOT EXISTS devices (
+            id INTEGER PRIMARY KEY,
+            recognized_text TEXT NOT NULL,
+            contract_number TEXT,
+            operation_type TEXT NOT NULL CHECK(operation_type IN ('receipt', 'issue')),
+            source_image_path TEXT,
+            device_model_id INTEGER NOT NULL REFERENCES device_models(id) ON DELETE RESTRICT,
+            registered_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS devices_registered_at_idx ON devices(registered_at);
+        CREATE TABLE IF NOT EXISTS ai_agents (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            provider TEXT NOT NULL CHECK(provider IN ('openai', 'anthropic', 'gemini')),
+            model TEXT NOT NULL,
+            credential_id TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS application_state (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            launch_count INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL
+        );
+        """
+    )
+
+
+def migrate_002_device_search_index(db: sqlite3.Connection) -> None:
+    db.execute("CREATE INDEX IF NOT EXISTS devices_recognized_text_idx ON devices(recognized_text)")
+
+
+SCHEMA_VERSION = 2
+MIGRATIONS: tuple[tuple[int, Callable[[sqlite3.Connection], None]], ...] = (
+    (1, migrate_001_initial_schema),
+    (2, migrate_002_device_search_index),
+)
 
 
 DEFAULT_MODELS = (

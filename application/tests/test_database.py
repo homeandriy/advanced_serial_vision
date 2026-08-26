@@ -50,3 +50,30 @@ class DatabaseTest(unittest.TestCase):
 
             with self.assertRaises(sqlite3.IntegrityError):
                 database.delete_model(model["id"])
+
+    def test_forward_migration_preserves_existing_records(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "database.sqlite3"
+            database = Database(path)
+            model = database.models()[0]
+            database.save_device(None, {"recognized_text": "SN-MIGRATION", "contract_number": "7", "operation_type": "receipt", "source_image_path": "", "device_model_id": model["id"], "registered_at": "2026-08-26T12:00:00"})
+            connection = sqlite3.connect(path)
+            try:
+                connection.execute("DROP INDEX devices_recognized_text_idx")
+                connection.execute("PRAGMA user_version = 1")
+                connection.commit()
+            finally:
+                connection.close()
+
+            migrated = Database(path)
+            records, _ = migrated.devices(search="SN-MIGRATION")
+            connection = sqlite3.connect(path)
+            try:
+                version = connection.execute("PRAGMA user_version").fetchone()[0]
+                indexes = {row[1] for row in connection.execute("PRAGMA index_list(devices)")}
+            finally:
+                connection.close()
+
+        self.assertEqual(2, version)
+        self.assertEqual(1, len(records))
+        self.assertIn("devices_recognized_text_idx", indexes)

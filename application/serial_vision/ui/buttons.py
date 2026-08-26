@@ -9,6 +9,7 @@ BUTTONS: dict[str, QStyle.StandardPixmap] = {
     "edit": QStyle.StandardPixmap.SP_FileDialogDetailedView,
     "refresh": QStyle.StandardPixmap.SP_BrowserReload,
     "folder": QStyle.StandardPixmap.SP_DirOpenIcon,
+    "open_image": QStyle.StandardPixmap.SP_FileIcon,
     "export": QStyle.StandardPixmap.SP_DialogSaveButton,
     "rotate": QStyle.StandardPixmap.SP_BrowserReload,
     "previous": QStyle.StandardPixmap.SP_ArrowBack,

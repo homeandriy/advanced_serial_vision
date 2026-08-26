@@ -54,7 +54,7 @@ interface, image-folder, update and AI-profile blocks.
 
 ## Local diagnostics and updates
 
-Startup writes timestamped records to `startup.log` in per-user app data. The Help menu can open that file. A configured GitHub repository is checked in a worker thread only when requested; a changelog is displayed and an installer URL is opened only after the operator confirms. No automatic installation occurs.
+Startup writes timestamped records to `startup.log` in per-user app data. The Help menu can open that file. A configured GitHub repository is checked in a worker thread one minute after startup and on demand. On Windows, a newer signed GitHub release EXE is downloaded to a temporary folder, verified against its SHA-256 release digest, then launched silently after the application closes; once setup succeeds, the helper relaunches the updated executable. The installer uses the stable AppId and does not touch per-user SQLite data. On the next start, forward-only SQLite migrations are applied transactionally using PRAGMA user_version; migrations never delete or recreate the database. On Linux, the operator receives a manual-installation notice because a DEB update can require system privileges.
 
 ## Scalability and statistics
 

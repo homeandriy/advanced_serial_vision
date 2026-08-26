@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from serial_vision.updates import apply_update
+
 from PySide6.QtCore import QStandardPaths
 from PySide6.QtWidgets import QApplication
 
@@ -12,6 +14,13 @@ from serial_vision.ui.main_window import MainWindow
 
 
 def main() -> int:
+    if "--apply-update" in sys.argv:
+        index = sys.argv.index("--apply-update")
+        try:
+            installer_url, expected_sha256, parent_pid, application_path = sys.argv[index + 1:index + 5]
+        except ValueError:
+            return 1
+        return apply_update(installer_url, expected_sha256, int(parent_pid), application_path)
     app = QApplication(sys.argv)
     app.setApplicationName("Serial Vision")
     app.setOrganizationName("Serial Vision")
