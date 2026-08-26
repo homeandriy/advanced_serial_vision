@@ -1,0 +1,2 @@
+"""Serial Vision desktop application."""
+

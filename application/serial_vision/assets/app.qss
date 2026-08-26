@@ -1,0 +1,3 @@
+QLabel#imagePreview {
+    border: 1px solid palette(mid);
+}

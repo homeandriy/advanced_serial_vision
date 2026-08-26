@@ -1,0 +1,45 @@
+#ifndef AppVersion
+  #define AppVersion "0.1.0"
+#endif
+#define AppName "Serial Vision"
+#define AppExeName "SerialVision.exe"
+
+[Setup]
+AppId={{8E236324-5D40-482A-9470-9B411A5E5017}
+AppName={#AppName}
+AppVersion={#AppVersion}
+AppPublisher=homeandriy
+DefaultDirName={autopf}\Serial Vision
+OutputDir=..\dist\installer
+OutputBaseFilename=SerialVision-Setup-v{#AppVersion}
+SetupIconFile=..\application\serial_vision\assets\app-icon.ico
+UninstallDisplayIcon={app}\{#AppExeName}
+Compression=lzma2/ultra64
+SolidCompression=yes
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+MinVersion=10.0
+PrivilegesRequired=lowest
+CloseApplications=yes
+CloseApplicationsFilter={#AppExeName}
+SetupLogging=yes
+ShowLanguageDialog=auto
+LanguageDetectionMethod=uilanguage
+
+[Languages]
+Name: "uk"; MessagesFile: "compiler:Languages\Ukrainian.isl"
+Name: "en"; MessagesFile: "compiler:Default.isl"
+Name: "pl"; MessagesFile: "compiler:Languages\Polish.isl"
+
+[Files]
+Source: "..\dist\SerialVision.exe"; DestDir: "{app}"; Flags: ignoreversion
+
+[Icons]
+Name: "{autoprograms}\Serial Vision"; Filename: "{app}\{#AppExeName}"
+Name: "{autodesktop}\Serial Vision"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
+
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
+
+[Run]
+Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,Serial Vision}"; Flags: nowait postinstall skipifsilent
