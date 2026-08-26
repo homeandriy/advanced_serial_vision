@@ -1,28 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product
-      Id="*"
-      Name="Serial Vision"
-      Language="1049"
-      Version="$(var.AppVersion)"
-      Manufacturer="homeandriy"
-      UpgradeCode="A67A4D43-5923-4B1C-A029-2E1B29B3F4D3">
+  <Product Id="*" Name="Serial Vision" Language="1049" Version="$(var.AppVersion)" Manufacturer="homeandriy" UpgradeCode="A67A4D43-5923-4B1C-A029-2E1B29B3F4D3">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of Serial Vision is already installed." />
     <MediaTemplate EmbedCab="yes" />
-
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
-        <Directory Id="INSTALLDIR" Name="Serial Vision">
-          <Component Id="SerialVisionExecutable" Guid="*" Win64="yes">
-            <File Id="SerialVisionExe" Source="$(var.SourceDir)\SerialVision.exe" KeyPath="yes" />
-          </Component>
-        </Directory>
+        <Directory Id="INSTALLDIR" Name="Serial Vision" />
       </Directory>
     </Directory>
-
     <Feature Id="MainFeature" Title="Serial Vision" Level="1">
-      <ComponentRef Id="SerialVisionExecutable" />
+      <ComponentGroupRef Id="SerialVisionFiles" />
     </Feature>
   </Product>
 </Wix>

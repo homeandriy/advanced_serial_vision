@@ -5,7 +5,7 @@ numbers and MAC addresses on equipment photographs.
 
 ## Current scope
 
-The desktop version provides local SQLite storage, image-folder scanning, Tesseract
+The desktop version provides local SQLite storage, image-folder scanning, RapidOCR
 OCR, barcode recognition, image rotation, AI profiles for OpenAI/Anthropic/Gemini,
 and a localized Windows packaging workflow. Provider keys are stored locally in
 Windows Credential Manager, never in SQLite or source control.
@@ -21,8 +21,7 @@ python -m venv .venv
 Or use `make install` and `make run` where GNU Make is available.
 
 The application stores its SQLite database and preferences in the per-user app-data
-directory. Set the path to a local Tesseract executable in **Settings** when it is
-not available as `tesseract` on `PATH`.
+directory. OCR uses the bundled local RapidOCR engine; no external executable is required.
 
 ## Project layout
 

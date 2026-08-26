@@ -5,7 +5,7 @@
 Serial Vision is a local-first Windows desktop application for recognizing serial
 numbers and MAC addresses in photographs and registering equipment operations.
 
-- Python 3.11+, PySide6 / Qt 6, SQLite, Pillow, and local Tesseract OCR.
+- Python 3.11+, PySide6 / Qt 6, SQLite, Pillow, and local RapidOCR OCR.
 - Use the per-user app-data directory for database and user settings. Do not write
   to the installation directory at runtime.
 - The application must work without a network connection. AI recognition is an

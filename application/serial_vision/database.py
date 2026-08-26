@@ -5,6 +5,7 @@ import sqlite3
 import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Iterator
 
@@ -58,6 +59,11 @@ class Database:
                     model TEXT NOT NULL,
                     credential_id TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS application_state (
+                    id INTEGER PRIMARY KEY CHECK(id = 1),
+                    launch_count INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL
+                );
                 """
             )
             count = db.execute("SELECT COUNT(*) FROM device_models").fetchone()[0]
@@ -82,6 +88,13 @@ class Database:
                 "INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 (key, value),
             )
+
+    def register_launch(self) -> int:
+        now = datetime.now(UTC).isoformat()
+        with self.connection() as db:
+            db.execute("INSERT OR IGNORE INTO application_state(id, launch_count, updated_at) VALUES (1, 0, ?)", (now,))
+            db.execute("UPDATE application_state SET launch_count = launch_count + 1, updated_at = ? WHERE id = 1", (now,))
+            return int(db.execute("SELECT launch_count FROM application_state WHERE id = 1").fetchone()[0])
 
     def ai_agents(self) -> list[sqlite3.Row]:
         with self.connection() as db:
@@ -113,6 +126,15 @@ class Database:
         with self.connection() as db:
             return db.execute(f"SELECT * FROM device_models {where} ORDER BY name", params).fetchall()
 
+    def popular_models(self, limit: int = 10) -> list[sqlite3.Row]:
+        with self.connection() as db:
+            used = db.execute("SELECT m.id, m.name, COUNT(d.id) AS usage_count FROM device_models m JOIN devices d ON d.device_model_id = m.id GROUP BY m.id, m.name ORDER BY usage_count DESC, m.name LIMIT ?", (limit,)).fetchall()
+            used_ids = {row["id"] for row in used}
+            placeholders = ",".join("?" for _ in DEFAULT_MODELS)
+            defaults = db.execute(f"SELECT id, name, 0 AS usage_count FROM device_models WHERE name IN ({placeholders})", DEFAULT_MODELS).fetchall()
+        fallback = sorted((row for row in defaults if row["id"] not in used_ids), key=lambda row: DEFAULT_MODELS.index(row["name"]))
+        return [*used, *fallback][:limit]
+
     def save_model(self, model_id: int | None, name: str, device_type: str, service: str) -> None:
         with self.connection() as db:
             if model_id is None:
@@ -124,7 +146,7 @@ class Database:
         with self.connection() as db:
             db.execute("DELETE FROM device_models WHERE id = ?", (model_id,))
 
-    def devices(self, search: str = "", device_type: str = "", service: str = "", date_from: str = "", date_to: str = "", model_id: int | None = None, operation: str = "") -> list[sqlite3.Row]:
+    def devices(self, search: str = "", device_type: str = "", service: str = "", date_from: str = "", date_to: str = "", model_id: int | None = None, operation: str = "", page: int = 1, per_page: int = 100) -> tuple[list[sqlite3.Row], dict[str, int] | None]:
         conditions, params = [], []
         if search:
             conditions.append("(d.recognized_text LIKE ? OR d.contract_number LIKE ?)")
@@ -137,10 +159,10 @@ class Database:
             params.append(service)
         if date_from:
             conditions.append("d.registered_at >= ?")
-            params.append(f"{date_from}T00:00:00")
+            params.append(self._utc_boundary(date_from, end=False))
         if date_to:
             conditions.append("d.registered_at <= ?")
-            params.append(f"{date_to}T23:59:59")
+            params.append(self._utc_boundary(date_to, end=True))
         if model_id is not None:
             conditions.append("d.device_model_id = ?")
             params.append(model_id)
@@ -154,7 +176,18 @@ class Database:
             {where} ORDER BY d.registered_at DESC, d.id DESC
         """
         with self.connection() as db:
-            return db.execute(query, params).fetchall()
+            total = int(db.execute(f"SELECT COUNT(*) FROM devices d JOIN device_models m ON m.id = d.device_model_id {where}", params).fetchone()[0])
+            if total <= 5000:
+                return db.execute(query, params).fetchall(), None
+            pages = max(1, (total + per_page - 1) // per_page)
+            page = min(max(1, page), pages)
+            rows = db.execute(query + " LIMIT ? OFFSET ?", [*params, per_page, (page - 1) * per_page]).fetchall()
+            return rows, {"page": page, "per_page": per_page, "total": total, "pages": pages}
+
+    @staticmethod
+    def _utc_boundary(value: str, end: bool) -> str:
+        local = datetime.fromisoformat(f"{value}T23:59:59" if end else f"{value}T00:00:00")
+        return local.replace(tzinfo=ZoneInfo("Europe/Kyiv")).astimezone(UTC).isoformat()
 
     def save_device(self, device_id: int | None, data: dict[str, object]) -> None:
         values = (
@@ -183,6 +216,10 @@ class Database:
             writer.writerow(["Дата", "Номер договору", "Операція", "Текст", "Модель", "Тип", "Послуга", "Шлях до фото"])
             for row in rows:
                 writer.writerow([row["registered_at"], row["contract_number"] or "", row["operation_type"], row["recognized_text"], row["model_name"], row["device_type"], row["service"], row["source_image_path"] or ""])
+
+    def statistics_rows(self) -> list[sqlite3.Row]:
+        with self.connection() as db:
+            return db.execute("SELECT d.registered_at, d.operation_type, m.service, m.name AS model_name FROM devices d JOIN device_models m ON m.id = d.device_model_id").fetchall()
 
     def statistics(self) -> list[sqlite3.Row]:
         with self.connection() as db:

@@ -32,7 +32,7 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 Name: "pl"; MessagesFile: "compiler:Languages\Polish.isl"
 
 [Files]
-Source: "..\dist\SerialVision.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\SerialVision\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\Serial Vision"; Filename: "{app}\{#AppExeName}"

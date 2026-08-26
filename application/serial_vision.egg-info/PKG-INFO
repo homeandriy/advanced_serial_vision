@@ -9,5 +9,6 @@ Requires-Dist: keyring<27,>=25
 Requires-Dist: rapidocr<4,>=3.4
 Requires-Dist: onnxruntime<2,>=1.20
 Requires-Dist: zxing-cpp<3,>=2.3
+Requires-Dist: tzdata>=2025.2
 Provides-Extra: build
 Requires-Dist: pyinstaller<7,>=6.11; extra == "build"

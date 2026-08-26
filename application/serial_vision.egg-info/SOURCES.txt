@@ -10,6 +10,7 @@ application/serial_vision/i18n.py
 application/serial_vision/image_catalog.py
 application/serial_vision/main.py
 application/serial_vision/ocr.py
+application/serial_vision/updates.py
 application/serial_vision.egg-info/PKG-INFO
 application/serial_vision.egg-info/SOURCES.txt
 application/serial_vision.egg-info/dependency_links.txt

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import sqlite3
+from collections import defaultdict
 import keyring
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from serial_vision.database import Database
@@ -19,18 +22,48 @@ class SerialVisionService:
         value = self._database.setting("image_directory")
         return Path(value) if value and Path(value).is_dir() else None
 
-    def save_settings(self, image_directory: Path, tesseract_binary: str) -> None:
+    def save_settings(self, image_directory: Path) -> None:
+        if not image_directory.is_dir():
+            raise ValueError("image_directory")
         self._database.set_setting("image_directory", str(image_directory.resolve()))
-        self._database.set_setting("tesseract_binary", tesseract_binary or "tesseract")
 
-    def tesseract_binary(self) -> str:
-        return self._database.setting("tesseract_binary", "tesseract")
+    def update_repository(self) -> str:
+        return self._database.setting("github_repository").strip()
+
+    def save_update_repository(self, repository: str) -> None:
+        self._database.set_setting("github_repository", repository.strip())
+
+    def setup_required(self) -> bool:
+        return self._database.setting("license_accepted") != "yes" or self.image_directory() is None
+
+    def complete_setup(self, image_directory: Path) -> None:
+        if not image_directory.is_dir():
+            raise ValueError("The selected image folder is unavailable.")
+        self.save_settings(image_directory)
+        self._database.set_setting("license_accepted", "yes")
+
+    def register_launch(self) -> int:
+        return self._database.register_launch()
+
+    def startup_log_path(self) -> Path:
+        return self._database.path.parent / "startup.log"
+
+    def log_startup(self, message: str) -> None:
+        with self.startup_log_path().open("a", encoding="utf-8") as log:
+            log.write(f"{datetime.now(UTC).isoformat()} {message}\n")
 
     def locale(self) -> str:
         return self._database.setting("locale", system_locale()) if self._database.has_setting("locale") else system_locale()
 
     def save_locale(self, locale: str) -> None:
         self._database.set_setting("locale", locale)
+
+    @staticmethod
+    def display_time(value: str) -> str:
+        parsed = datetime.fromisoformat(value)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(ZoneInfo("Europe/Kyiv")).strftime("%d.%m.%Y %H:%M")
 
     def ai_agents(self) -> list[sqlite3.Row]:
         return self._database.ai_agents()
@@ -58,26 +91,70 @@ class SerialVisionService:
     def models(self) -> list[sqlite3.Row]:
         return self._database.models()
 
+    def popular_models(self) -> list[sqlite3.Row]:
+        return self._database.popular_models()
+
     def add_model(self, name: str, device_type: str, service: str) -> None:
-        self._database.save_model(None, name, device_type, service)
+        try:
+            self._database.save_model(None, name, device_type, service)
+        except sqlite3.IntegrityError as error:
+            raise ValueError("model_exists") from error
 
     def delete_model(self, model_id: int) -> None:
-        self._database.delete_model(model_id)
+        try:
+            self._database.delete_model(model_id)
+        except sqlite3.IntegrityError as error:
+            raise ValueError("model_in_use") from error
 
     def add_device(self, data: dict[str, object]) -> None:
-        self._database.save_device(None, data)
+        self._validate_device_data(data)
+        self._database.save_device(None, self._utc_device_data(data))
 
     def update_device(self, device_id: int, data: dict[str, object]) -> None:
-        self._database.save_device(device_id, data)
+        self._validate_device_data(data)
+        self._database.save_device(device_id, self._utc_device_data(data))
+
+    @staticmethod
+    def _validate_device_data(data: dict[str, object]) -> None:
+        if len(str(data.get("contract_number", "")).strip()) > 20:
+            raise ValueError("contract_too_long")
+
+    @staticmethod
+    def _utc_device_data(data: dict[str, object]) -> dict[str, object]:
+        copy = dict(data)
+        value = datetime.fromisoformat(str(copy["registered_at"]))
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=ZoneInfo("Europe/Kyiv"))
+        copy["registered_at"] = value.astimezone(UTC).isoformat()
+        return copy
 
     def delete_device(self, device_id: int) -> None:
         self._database.delete_device(device_id)
 
-    def devices(self, search: str = "", device_type: str = "", service: str = "", date_from: str = "", date_to: str = "", model_id: int | None = None, operation: str = "") -> list[sqlite3.Row]:
-        return self._database.devices(search, device_type, service, date_from, date_to, model_id, operation)
+    def devices(self, search: str = "", device_type: str = "", service: str = "", date_from: str = "", date_to: str = "", model_id: int | None = None, operation: str = "", page: int = 1) -> tuple[list[sqlite3.Row], dict[str, int] | None]:
+        return self._database.devices(search, device_type, service, date_from, date_to, model_id, operation, page)
+
+    def all_filtered_devices(self, search: str = "", device_type: str = "", service: str = "", date_from: str = "", date_to: str = "", model_id: int | None = None, operation: str = "") -> list[sqlite3.Row]:
+        rows, _ = self._database.devices(search, device_type, service, date_from, date_to, model_id, operation, 1, 10_000_000)
+        return rows
 
     def export_devices(self, destination: Path, rows: list[sqlite3.Row]) -> None:
         self._database.export_csv(destination, rows)
+
+    def statistics_summary(self, group_by: str = "month") -> dict[str, object]:
+        operations: dict[str, dict[str, int]] = defaultdict(lambda: {"receipt": 0, "issue": 0})
+        services: dict[str, int] = defaultdict(int)
+        models: dict[str, int] = defaultdict(int)
+        for row in self._database.statistics_rows():
+            value = datetime.fromisoformat(row["registered_at"])
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=UTC)
+            local = value.astimezone(ZoneInfo("Europe/Kyiv"))
+            period = local.strftime("%Y-%m-%d" if group_by == "day" else "%Y-%m")
+            operations[period][row["operation_type"]] += 1
+            services[row["service"]] += 1
+            models[row["model_name"]] += 1
+        return {"operations": dict(sorted(operations.items())), "services": dict(sorted(services.items())), "models": dict(sorted(models.items(), key=lambda item: (-item[1], item[0])))}
 
     def statistics(self) -> list[sqlite3.Row]:
         return self._database.statistics()

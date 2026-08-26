@@ -7,11 +7,9 @@ from pathlib import Path
 from rapidocr import RapidOCR
 
 
-class TesseractRecognizer:
-    def __init__(self, binary: str = "", languages: str = "eng", psm: int = 6) -> None:
-        self.binary = binary.strip() or "tesseract"
-        self.languages = languages
-        self.psm = psm
+class RapidOcrRecognizer:
+    def __init__(self, language: str = "eng") -> None:
+        self.language = language
 
     def recognize(self, image_path: Path) -> str:
         result = self._engine()(str(image_path))

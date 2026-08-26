@@ -9,7 +9,8 @@ package_name="serial-vision_${version}_amd64"
 
 rm -rf "$package_root"
 install -d "$package_root/DEBIAN" "$package_root/usr/bin" "$package_root/usr/lib/serial-vision"
-install -m 0755 "$executable" "$package_root/usr/lib/serial-vision/SerialVision"
+cp -a "$executable/." "$package_root/usr/lib/serial-vision/"
+chmod 0755 "$package_root/usr/lib/serial-vision/SerialVision"
 ln -s ../lib/serial-vision/SerialVision "$package_root/usr/bin/serial-vision"
 
 cat > "$package_root/DEBIAN/control" <<EOF
