@@ -30,6 +30,11 @@ BUTTONS: dict[str, QStyle.StandardPixmap] = {
     "api_integrations": QStyle.StandardPixmap.SP_DialogHelpButton,
     "generate_qr": QStyle.StandardPixmap.SP_FileDialogContentsView,
     "generate_barcode": QStyle.StandardPixmap.SP_FileDialogDetailedView,
+    "camera": QStyle.StandardPixmap.SP_ComputerIcon,
+    "scan": QStyle.StandardPixmap.SP_ComputerIcon,
+    "capture": QStyle.StandardPixmap.SP_DialogSaveButton,
+    "api_example": QStyle.StandardPixmap.SP_DialogHelpButton,
+    "copy_record": QStyle.StandardPixmap.SP_FileDialogNewFolder,
 }
 
 

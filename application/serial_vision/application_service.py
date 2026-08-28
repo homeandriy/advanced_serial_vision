@@ -32,7 +32,7 @@ class SerialVisionService:
         self._database.set_setting("image_directory", str(image_directory.resolve()))
 
     def update_repository(self) -> str:
-        return "homeandriy/serial_number_pythom"
+        return "homeandriy/advanced_serial_vision"
 
     def theme(self) -> str:
         return self._database.setting("theme", "system")

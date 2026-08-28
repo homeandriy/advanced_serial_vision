@@ -63,7 +63,7 @@ python -m venv .venv
 
 ## Встановлення та релізи
 
-Готові Windows EXE/MSI, Windows ZIP і Linux DEB доступні на [GitHub Releases](https://github.com/homeandriy/serial_number_pythom/releases). Інсталятор Windows має три мови: українську, англійську та польську.
+Готові Windows EXE/MSI, Windows ZIP і Linux DEB доступні на [GitHub Releases](https://github.com/homeandriy/advanced_serial_vision/releases). Інсталятор Windows має три мови: українську, англійську та польську.
 
 ## Документація
 

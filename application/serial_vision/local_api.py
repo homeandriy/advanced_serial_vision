@@ -105,7 +105,12 @@ class LocalApiServer:
         rows = self.service.models()
         if method == "GET":
             result = [self.model(row) for row in rows]
-            return 200, next((row for row in result if row["id"] == identifier), result) if identifier else result
+            if identifier is None:
+                return 200, result
+            item = next((row for row in result if row["id"] == identifier), None)
+            if item is None:
+                raise ApiError(404, "Model not found")
+            return 200, item
         if method == "POST":
             self.service.add_model(str(data["name"]), str(data["device_type"]), str(data["service"])); return 201, {"created": True}
         if method == "PATCH" and identifier:
@@ -118,7 +123,12 @@ class LocalApiServer:
         rows = self.service.all_filtered_devices(query.get("search", [""])[0], query.get("type", [""])[0], query.get("service", [""])[0], query.get("date_from", [""])[0], query.get("date_to", [""])[0], int(query["model_id"][0]) if "model_id" in query else None, query.get("operation", [""])[0])
         if method == "GET":
             result = [self.device(row) for row in rows]
-            return 200, next((row for row in result if row["id"] == identifier), result) if identifier else result
+            if identifier is None:
+                return 200, result
+            item = next((row for row in result if row["id"] == identifier), None)
+            if item is None:
+                raise ApiError(404, "Equipment record not found")
+            return 200, item
         required = {"recognized_text", "contract_number", "operation_type", "device_model_id", "registered_at"}
         if method in {"POST", "PATCH"} and not required <= data.keys(): raise ApiError(422, "Missing equipment fields")
         if method == "POST": self.service.add_device(data); return 201, {"created": True}
@@ -322,6 +332,7 @@ class LocalApiServer:
                     "post": {"tags": ["Application Routes"], "summary": "Create equipment", "requestBody": body(equipment_write), "responses": {"201": response("Equipment created", {"type": "object"}), **errors}},
                 },
                 "/equipment/{id}": {
+                    "get": {"tags": ["Application Routes"], "summary": "Get equipment record", "parameters": identifier, "responses": {"200": response("Equipment record", {"$ref": "#/components/schemas/Equipment"}), **errors}},
                     "patch": {"tags": ["Application Routes"], "summary": "Update equipment", "parameters": identifier, "requestBody": body(equipment_write), "responses": {"200": response("Equipment updated", {"type": "object"}), **errors}},
                     "delete": {"tags": ["Application Routes"], "summary": "Delete equipment", "parameters": identifier, "responses": {"204": {"description": "Equipment deleted"}, **errors}},
                 },

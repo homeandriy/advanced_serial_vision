@@ -29,7 +29,9 @@ model in v0.1.0; the Windows user who launches it is the operator.
 7. The operator may choose a system, light or dark theme and one button/tab icon
    style: system, modern, classic, Windows 98, or Ubuntu 22. The non-system styles are bundled local SVG sets under `assets/icons/` and apply to buttons and tabs. System theme follows
    the OS at application startup; explicit operator choice is retained locally.
-8. The operator creates, edits, or deletes equipment models, including their type and
+8. When editing an existing record, the operator can open safe API request examples without a Bearer key, or select Copy record. Copy opens a prefilled create form and saving it creates a new record without changing the source record.
+9. In the Scan tab, the operator explicitly starts a local camera, reviews its preview, and explicitly requests a still frame. The frame is processed locally for QR and 1D/2D barcodes, then removed; neither video nor frames are sent to a network service.
+10. The operator creates, edits, or deletes equipment models, including their type and
    service. The models table shows each model usage count and supports sorting by
    name and numeric usage count. A model still cannot be deleted while equipment
    records reference it. The operator can import models from an XLSX worksheet named Models or Моделі with name, device_type and service columns. Only modem/tuner and internet/television are accepted; malformed rows are skipped and duplicate combinations remain unchanged.
@@ -46,6 +48,7 @@ model in v0.1.0; the Windows user who launches it is the operator.
 - CSV export uses every currently filtered record, including all paginated pages, and Windows-1251 encoding for Microsoft Excel compatibility.
 - Contract number is limited to 20 characters. Equipment timestamps are stored in UTC and interpreted in Europe/Kyiv for input, filters and display.
 - The image catalog is recursive but accepts only supported image files that still resolve inside the selected root folder.
+- Camera capture is disabled until a camera is explicitly started. A missing, denied or unavailable camera leaves the Scan tab usable and shows the OS-provided reason.
 
 ## Audit and future events
 

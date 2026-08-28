@@ -161,9 +161,15 @@ jobs:
 
       - name: Generate release changelog
         run: |
-          previous_tag="$(git tag --merged "$GITHUB_SHA" --sort=-version:refname | head -n 1)"
+          previous_tag="$(git tag --merged "$GITHUB_SHA" --sort=-version:refname | grep -Fxv "v$VERSION" | head -n 1)"
+          awk -v header="## v$VERSION - " '
+            /^## v/ && found { exit }
+            index($0, header) == 1 { found = 1 }
+            found { print }
+          ' CHANGELOG.md > current-changelog.md
+          test -s current-changelog.md
           {
-            printf '# Serial Vision v%s\n\n' "$VERSION"
+            printf '# Advanced Serial Vision v%s\n\n' "$VERSION"
             printf 'Automated build for commit `%s`.\n\n' "$GITHUB_SHA"
             printf '## Changes\n\n'
             if [ -n "$previous_tag" ]; then
@@ -171,8 +177,8 @@ jobs:
             else
               git log --format='- %s (%h)' "$GITHUB_SHA"
             fi
-            printf '\n## Project changelog\n\n'
-            cat CHANGELOG.md
+            printf '\n## Changelog\n\n'
+            cat current-changelog.md
           } > release-notes.md
 
       - name: Publish GitHub release

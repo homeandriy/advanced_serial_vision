@@ -34,7 +34,7 @@ class UpdateTests(unittest.TestCase):
             }],
         })
 
-        release = check_latest_release("homeandriy/serial_number_pythom", "0.2.0")
+        release = check_latest_release("homeandriy/advanced_serial_vision", "0.2.0")
 
         self.assertIsNotNone(release)
         assert release is not None
@@ -46,4 +46,4 @@ class UpdateTests(unittest.TestCase):
     def test_ignores_current_or_older_release(self, urlopen) -> None:
         urlopen.return_value = _Response({"tag_name": "v0.2.0", "assets": []})
 
-        self.assertIsNone(check_latest_release("homeandriy/serial_number_pythom", "0.2.0"))
+        self.assertIsNone(check_latest_release("homeandriy/advanced_serial_vision", "0.2.0"))

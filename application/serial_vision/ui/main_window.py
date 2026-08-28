@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+import tempfile
 import os
 from pathlib import Path
 import subprocess
 import sys
 from PySide6.QtCore import QDate, QDateTime, QLocale, QSize, Qt, QTimer, QUrl, QThread, Signal
 from PySide6.QtGui import QAction, QDesktopServices, QIcon, QPixmap
+from PySide6.QtMultimedia import QCamera, QImageCapture, QMediaCaptureSession, QMediaDevices
+from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtCharts import QBarCategoryAxis, QBarSeries, QBarSet, QChart, QChartView, QValueAxis
 from PySide6.QtWidgets import QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QDateEdit, QDateTimeEdit, QDialog, QFileDialog, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QScrollArea, QSplitter, QStyle, QSystemTrayIcon, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QToolButton, QVBoxLayout, QWidget
 from serial_vision.application_service import SerialVisionService
@@ -80,9 +83,9 @@ class AiRecognitionWorker(QThread):
 
 class MainWindow(QMainWindow):
     def __init__(self, service: SerialVisionService) -> None:
-        super().__init__(); self.service = service; self.local_api = LocalApiServer(service); self.locale = service.locale(); self.catalog = ImageCatalog(service.image_directory()); self.selected_image: Path | None = None; self.image_page = 1; self.equipment_page = 1
+        super().__init__(); self.service = service; self.local_api = LocalApiServer(service); self.locale = service.locale(); self.catalog = ImageCatalog(service.image_directory()); self.selected_image: Path | None = None; self.image_page = 1; self.equipment_page = 1; self.camera: QCamera | None = None; self.camera_capture: QImageCapture | None = None; self.camera_session: QMediaCaptureSession | None = None
         self.service.register_launch(); self.startup_log_error = self.service.log_startup("Application startup started"); self.setWindowTitle(self.tr("app_name")); self.setWindowIcon(self.icon()); self.resize(1500, 920); self.create_tray(); self.create_menus(); self.recognition_generation = 0
-        self.tabs = QTabWidget(); self.tabs.setIconSize(icon_size(self.service.icon_style())); self.setCentralWidget(self.tabs); self.tabs.addTab(self.recognition(), self.tab_icon("recognition"), self.tr("recognition")); self.tabs.addTab(self.equipment(), self.tab_icon("equipment"), self.tr("equipment")); self.tabs.addTab(self.models(), self.tab_icon("models"), self.tr("models")); self.tabs.addTab(self.statistics(), self.tab_icon("statistics"), self.tr("statistics")); self.api_integration_tab = self.api_integrations(); self.tabs.addTab(self.api_integration_tab, self.tab_icon("api_integrations"), self.tr("api_integrations")); self.api_integration_tab.setEnabled(self.service.api_enabled()); self.tabs.addTab(self.settings(), self.tab_icon("settings"), self.tr("settings")); self.refresh_images(); self.refresh_agents(); self.refresh_equipment(); self.refresh_models(); self.refresh_statistics(); self.refresh_api_integration()
+        self.tabs = QTabWidget(); self.tabs.setIconSize(icon_size(self.service.icon_style())); self.setCentralWidget(self.tabs); self.tabs.addTab(self.recognition(), self.tab_icon("recognition"), self.tr("recognition")); self.tabs.addTab(self.camera_scan(), self.tab_icon("camera"), self.tr("scan")); self.tabs.addTab(self.equipment(), self.tab_icon("equipment"), self.tr("equipment")); self.tabs.addTab(self.models(), self.tab_icon("models"), self.tr("models")); self.tabs.addTab(self.statistics(), self.tab_icon("statistics"), self.tr("statistics")); self.api_integration_tab = self.api_integrations(); self.tabs.addTab(self.api_integration_tab, self.tab_icon("api_integrations"), self.tr("api_integrations")); self.api_integration_tab.setEnabled(self.service.api_enabled()); self.tabs.addTab(self.settings(), self.tab_icon("settings"), self.tr("settings")); self.refresh_images(); self.refresh_agents(); self.refresh_equipment(); self.refresh_models(); self.refresh_statistics(); self.refresh_api_integration()
         self.statusBar().addPermanentWidget(QLabel(self.tr("developer"))); self.statusBar().addPermanentWidget(QLabel(self.tr("version", version=app_version())));
         if self.service.api_enabled():
             try: self.local_api.start()
@@ -124,7 +127,7 @@ class MainWindow(QMainWindow):
         delete_action.triggered.connect(self.delete_image)
 
         view_menu = self.menuBar().addMenu(self.tr("menu_view"))
-        for index, key in enumerate(("recognition", "equipment", "models", "statistics", "api_integrations", "settings")):
+        for index, key in enumerate(("recognition", "scan", "equipment", "models", "statistics", "api_integrations", "settings")):
             action = view_menu.addAction(self.tr(key))
             action.triggered.connect(lambda _checked=False, current=index: self.tabs.setCurrentIndex(current))
 
@@ -294,6 +297,98 @@ class MainWindow(QMainWindow):
         barcode_heading = QHBoxLayout(); barcode_heading.addWidget(QLabel(self.tr("barcodes"))); barcode_heading.addWidget(self.help_button("barcode-ai", "barcodes")); barcode_heading.addStretch(); right.addLayout(barcode_heading); self.barcode_button = button(results, "ocr", self.tr("run_barcode")); self.barcode_button.clicked.connect(self.run_barcodes); right.addWidget(self.barcode_button); self.barcode_result = QTextEdit(self.tr("barcode_empty")); self.barcode_result.setReadOnly(True); self.bind_result_menu(self.barcode_result); right.addWidget(self.barcode_result, 1)
         ai_heading = QHBoxLayout(); ai_heading.addWidget(QLabel(self.tr("ai"))); ai_heading.addWidget(self.help_button("barcode-ai", "ai")); ai_heading.addStretch(); right.addLayout(ai_heading); ai_bar = QHBoxLayout(); self.agent_select = QComboBox(); self.agent_select.currentIndexChanged.connect(self.agent_changed); self.ai_button = button(results, "ocr", self.tr("run_ai")); self.ai_button.clicked.connect(self.run_ai); ai_bar.addWidget(self.agent_select, 1); ai_bar.addWidget(self.ai_button); right.addLayout(ai_bar); self.ai_result = QTextEdit(self.tr("ai_empty")); self.ai_result.setReadOnly(True); self.bind_result_menu(self.ai_result); right.addWidget(self.ai_result, 1); split.addWidget(results); split.setSizes([1050, 450]); split.setStretchFactor(0, 7); split.setStretchFactor(1, 3); layout.addWidget(split); return page
 
+    def camera_scan(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        controls = QHBoxLayout()
+        self.camera_selector = QComboBox(page)
+        self.camera_refresh = button(page, "refresh", self.tr("camera_refresh"))
+        self.camera_refresh.clicked.connect(self.refresh_camera_devices)
+        self.camera_start = button(page, "camera", self.tr("camera_start"))
+        self.camera_start.clicked.connect(self.start_camera)
+        self.camera_capture_button = button(page, "capture", self.tr("camera_capture"))
+        self.camera_capture_button.clicked.connect(self.capture_camera_frame)
+        controls.addWidget(QLabel(self.tr("camera")))
+        controls.addWidget(self.camera_selector, 1)
+        controls.addWidget(self.camera_refresh)
+        controls.addWidget(self.camera_start)
+        controls.addWidget(self.camera_capture_button)
+        layout.addLayout(controls)
+        self.camera_status = QLabel(self.tr("camera_unavailable"), page)
+        self.camera_status.setWordWrap(True)
+        layout.addWidget(self.camera_status)
+        self.camera_view = QVideoWidget(page)
+        self.camera_view.setMinimumHeight(360)
+        layout.addWidget(self.camera_view, 1)
+        layout.addWidget(QLabel(self.tr("camera_result"), page))
+        self.camera_result = QTextEdit(page)
+        self.camera_result.setReadOnly(True)
+        self.bind_result_menu(self.camera_result)
+        layout.addWidget(self.camera_result, 1)
+        self.refresh_camera_devices()
+        return page
+
+    def refresh_camera_devices(self) -> None:
+        self.stop_camera()
+        self.camera_selector.clear()
+        for device in QMediaDevices.videoInputs():
+            self.camera_selector.addItem(device.description(), device)
+        available = self.camera_selector.count() > 0
+        self.camera_start.setEnabled(available)
+        self.camera_capture_button.setEnabled(False)
+        self.camera_status.setText(self.tr("camera_select") if available else self.tr("camera_unavailable"))
+
+    def start_camera(self) -> None:
+        device = self.camera_selector.currentData()
+        if device is None:
+            self.camera_status.setText(self.tr("camera_unavailable"))
+            return
+        self.stop_camera()
+        try:
+            self.camera = QCamera(device, self)
+            self.camera_capture = QImageCapture(self)
+            self.camera_capture.imageSaved.connect(self.camera_image_saved)
+            self.camera_capture.errorOccurred.connect(lambda *_args: self.camera_status.setText(self.tr("camera_error", error=str(_args[-1]))))
+            self.camera_session = QMediaCaptureSession(self)
+            self.camera_session.setCamera(self.camera)
+            self.camera_session.setVideoOutput(self.camera_view)
+            self.camera_session.setImageCapture(self.camera_capture)
+            self.camera.start()
+        except RuntimeError as error:
+            self.stop_camera()
+            self.camera_status.setText(self.tr("camera_error", error=str(error)))
+            return
+        self.camera_capture_button.setEnabled(True)
+        self.camera_status.setText(self.tr("camera_ready"))
+
+    def stop_camera(self) -> None:
+        if self.camera is not None:
+            self.camera.stop()
+        self.camera = None
+        self.camera_capture = None
+        self.camera_session = None
+
+    def capture_camera_frame(self) -> None:
+        if self.camera_capture is None:
+            self.camera_status.setText(self.tr("camera_unavailable"))
+            return
+        destination = Path(tempfile.gettempdir()) / f"advanced-serial-vision-scan-{datetime.now().strftime('%Y%m%d%H%M%S%f')}.jpg"
+        self.camera_status.setText(self.tr("camera_capturing"))
+        self.camera_capture.captureToFile(str(destination))
+
+    def camera_image_saved(self, _request_id: int, filename: str) -> None:
+        path = Path(filename)
+        try:
+            result = BarcodeRecognizer().recognize(path)
+            self.camera_result.setPlainText(result or self.tr("camera_result_empty"))
+            self.camera_status.setText(self.tr("camera_ready"))
+        except RuntimeError as error:
+            self.camera_status.setText(self.tr("camera_error", error=str(error)))
+        finally:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
     def settings(self) -> QWidget:
         page = QWidget(); layout = QVBoxLayout(page); layout.addWidget(self.help_button("settings", "settings"), alignment=Qt.AlignmentFlag.AlignRight)
         interface = QGroupBox(self.tr("interface_settings")); interface_form = QFormLayout(interface); self.language = QComboBox()
@@ -572,7 +667,7 @@ class MainWindow(QMainWindow):
         if app is not None:
             apply_button_icons(icon_style)
             self.tabs.setIconSize(icon_size(icon_style))
-            for index, name in enumerate(("recognition", "equipment", "models", "statistics", "api_integrations", "settings")):
+            for index, name in enumerate(("recognition", "scan", "equipment", "models", "statistics", "api_integrations", "settings")):
                 self.tabs.setTabIcon(index, self.tab_icon(name))
             apply_theme(app, self.theme_choice.currentData())
         QMessageBox.information(self, self.tr("settings"), self.tr("settings_saved"))
@@ -593,19 +688,47 @@ class MainWindow(QMainWindow):
         elif action == raw:
             self.open_equipment_dialog(selected_text)
 
-    def open_equipment_dialog(self, text: str, existing=None) -> None:
+    def open_equipment_dialog(self, text: str, existing=None, prefill=None) -> None:
         dialog = QDialog(self); dialog.setWindowTitle(self.tr("new_equipment")); form = QFormLayout(dialog); text_field = QTextEdit(text); contract = QLineEdit(); operation = QComboBox(); operation.addItem(self.tr("receipt"), "receipt"); operation.addItem(self.tr("issue"), "issue"); model = QComboBox()
         popular = self.service.popular_models()
         popular_ids = {item["id"] for item in popular}
         for item in [*popular, *(item for item in self.service.models() if item["id"] not in popular_ids)]:
             model.addItem(item["name"], item["id"])
         date_time = QDateTimeEdit(); date_time.setDateTime(QDateTime.currentDateTime()); date_time.setCalendarPopup(True)
-        if existing is not None:
-            contract.setText(existing["contract_number"] or ""); operation.setCurrentIndex(operation.findData(existing["operation_type"])); model.setCurrentIndex(model.findData(existing["device_model_id"])); date_time.setDateTime(QDateTime.fromString(existing["registered_at"], Qt.DateFormat.ISODate))
+        if existing is not None or prefill is not None:
+            source = existing if existing is not None else prefill
+            contract.setText(source["contract_number"] or ""); operation.setCurrentIndex(operation.findData(source["operation_type"])); model.setCurrentIndex(model.findData(source["device_model_id"])); date_time.setDateTime(QDateTime.fromString(source["registered_at"], Qt.DateFormat.ISODate))
         code_field = QWidget(dialog); code_layout = QVBoxLayout(code_field); code_layout.setContentsMargins(0, 0, 0, 0); code_layout.addWidget(text_field); code_actions = QHBoxLayout(); qr = button(code_field, "generate_qr", self.tr("generate_qr")); qr.clicked.connect(lambda: self.show_generated_code(text_field.toPlainText(), "qr")); barcode = button(code_field, "generate_barcode", self.tr("generate_barcode")); barcode.clicked.connect(lambda: self.show_generated_code(text_field.toPlainText(), "barcode")); code_actions.addWidget(qr); code_actions.addWidget(barcode); code_actions.addStretch(); code_layout.addLayout(code_actions)
         form.addRow(self.tr("recognized_text"), code_field); form.addRow(self.tr("contract"), contract); form.addRow(self.tr("operation"), operation); form.addRow(self.tr("model"), model); form.addRow(self.tr("date_time"), date_time)
-        save = button(dialog, "save", self.tr("save")); save.clicked.connect(lambda: self.save_context_device(dialog, text_field, contract, operation, model, date_time, existing)); form.addRow(save); dialog.exec()
+        if existing is not None:
+            api_examples = button(dialog, "api_example", self.tr("api_request_examples")); api_examples.clicked.connect(lambda: self.show_device_api_examples(existing["id"]))
+            copy_record = button(dialog, "copy_record", self.tr("copy_record")); copy_record.clicked.connect(lambda: self.copy_device_dialog(dialog, existing))
+            form.addRow(api_examples); form.addRow(copy_record)
+        save = button(dialog, "save", self.tr("save")); save.clicked.connect(lambda: self.save_context_device(dialog, text_field, contract, operation, model, date_time, existing, prefill)); form.addRow(save); dialog.exec()
 
+    def copy_device_dialog(self, dialog: QDialog, device) -> None:
+        dialog.reject()
+        self.open_equipment_dialog(device["recognized_text"], prefill=device)
+
+    def show_device_api_examples(self, device_id: int) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle(self.tr("api_request_examples"))
+        layout = QVBoxLayout(dialog)
+        examples = QTextEdit(dialog)
+        examples.setReadOnly(True)
+        examples.setPlainText(
+            f"GET http://127.0.0.1:{self.service.api_port()}/api/v1/equipment/{device_id}\n"
+            "Authorization: Bearer <your-key>\n\n"
+            f"POST http://127.0.0.1:{self.service.api_port()}/api/v1/code/get\n"
+            "Authorization: Bearer <your-key>\n"
+            "Content-Type: application/json\n\n"
+            f'{{\n  "record_id": {device_id},\n  "type": "qrcode"\n}}'
+        )
+        layout.addWidget(examples)
+        close = button(dialog, "close", self.tr("close"))
+        close.clicked.connect(dialog.accept)
+        layout.addWidget(close)
+        dialog.exec()
     def show_generated_code(self, value: str, code_type: str) -> None:
         try:
             image_data = self.service.generate_code_png(value, code_type)
@@ -630,11 +753,11 @@ class MainWindow(QMainWindow):
         except OSError as error:
             self.error(self.tr("code_save_failed", error=str(error)))
 
-    def save_context_device(self, dialog: QDialog, text_field: QTextEdit, contract: QLineEdit, operation: QComboBox, model: QComboBox, date_time: QDateTimeEdit, existing=None) -> None:
+    def save_context_device(self, dialog: QDialog, text_field: QTextEdit, contract: QLineEdit, operation: QComboBox, model: QComboBox, date_time: QDateTimeEdit, existing=None, prefill=None) -> None:
         text = text_field.toPlainText().strip()
         if not text or model.currentData() is None:
             self.error(self.tr("profile_required")); return
-        data = {"recognized_text": text, "contract_number": contract.text(), "operation_type": operation.currentData(), "source_image_path": existing["source_image_path"] if existing is not None else str(self.selected_image or ""), "device_model_id": model.currentData(), "registered_at": date_time.dateTime().toString(Qt.DateFormat.ISODate)}
+        data = {"recognized_text": text, "contract_number": contract.text(), "operation_type": operation.currentData(), "source_image_path": (existing or prefill)["source_image_path"] if (existing is not None or prefill is not None) else str(self.selected_image or ""), "device_model_id": model.currentData(), "registered_at": date_time.dateTime().toString(Qt.DateFormat.ISODate)}
         try:
             if existing is None:
                 self.service.add_device(data)

@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## v0.5.4 - 2026-08-28
+
+### Added
+
+- Local camera Scan tab: operator-controlled video preview, still-frame capture, and offline QR/1D/2D barcode recognition.
+- Copy-record action in the equipment edit form and safe API request examples for the edited record.
+- `GET /api/v1/equipment/{id}` with an OpenAPI description.
+
+### Changed
+
+- Automatic update checks and release documentation now use the Advanced Serial Vision GitHub repository.
+- GitHub Release notes include only the current version changelog section and commits since the preceding tag.
+
+### Fixed
+
+- Single-record model and equipment API reads now return 404 when the requested id does not exist.
+
 ## v0.5.3 - 2026-08-28
 
 ### Fixed
