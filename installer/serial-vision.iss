@@ -1,15 +1,15 @@
 #ifndef AppVersion
   #define AppVersion "0.1.0"
 #endif
-#define AppName "Serial Vision"
+#define AppName "Advanced Serial Vision"
 #define AppExeName "SerialVision.exe"
 
 [Setup]
-AppId={{8E236324-5D40-482A-9470-9B411A5E5017}
+AppId={{D7A5A23A-40F5-4B9C-9B93-69753B72B8FB}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=homeandriy
-DefaultDirName={autopf}\Serial Vision
+DefaultDirName={autopf}\Advanced Serial Vision
 OutputDir=..\dist\installer
 OutputBaseFilename=SerialVision-Setup-v{#AppVersion}
 SetupIconFile=..\application\serial_vision\assets\app-icon.ico
@@ -35,11 +35,11 @@ Name: "pl"; MessagesFile: "compiler:Languages\Polish.isl"
 Source: "..\dist\SerialVision\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\Serial Vision"; Filename: "{app}\{#AppExeName}"
-Name: "{autodesktop}\Serial Vision"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\Advanced Serial Vision"; Filename: "{app}\{#AppExeName}"
+Name: "{autodesktop}\Advanced Serial Vision"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; Flags: unchecked
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,Serial Vision}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; Description: "{cm:LaunchProgram,Advanced Serial Vision}"; Flags: nowait postinstall skipifsilent

@@ -4,8 +4,8 @@
 перевірки він створює GitHub Release з такими файлами:
 
 - `SerialVision.exe` — portable Windows-застосунок;
-- `SerialVision-Setup-v*.exe` — Windows-інсталятор Inno Setup;
-- `SerialVision-v*.msi` — Windows MSI-інсталятор;
+- `SerialVision-Setup-v*.exe` — Windows-інсталятор Inno Setup з українською, англійською і польською;
+- `SerialVision-v*-uk.msi`, `SerialVision-v*-en.msi`, `SerialVision-v*-pl.msi` — Windows MSI-інсталятори з UI українською, англійською та польською відповідно;
 - `serial-vision_*.deb` — пакет Debian/Ubuntu для x86_64;
 - `serial-vision-*-source.tar.gz` — вихідний код для Linux.
 
@@ -23,3 +23,12 @@
 виправте причину й зробіть новий push у `main`. Повторний запуск того самого
 workflow використовує ту саму версію і може бути виконаний лише після видалення
 невдалого або частково створеного релізу з відповідним тегом.
+
+## Ізоляція інсталяцій і версія в бандлі
+
+Python/Qt-версія встановлюється окремо від оригінального NativePHP застосунку: її
+Inno Setup і MSI каталоги — `Program Files\Advanced Serial Vision`, а їхні AppId /
+UpgradeCode не перетинаються з іншими інсталяторами. Дані поточного користувача
+зберігаються окремо у `homeandriy\Advanced Serial Vision`; жоден інсталятор не
+переносить і не видаляє дані користувача. PyInstaller додає кореневий `VERSION` у бандл;
+застосунок читає його з теки бандла, а не з поточної робочої теки.

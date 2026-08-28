@@ -66,10 +66,21 @@ jobs:
           & iscc.exe "/DAppVersion=$env:VERSION" installer/serial-vision.iss
           & heat.exe dir "$PWD/dist/SerialVision" -cg SerialVisionFiles -dr INSTALLDIR -gg -srd -sfrag -t installer/harvest-x64.xslt -out dist/installer/serial-vision-files.wxs
           if ($LASTEXITCODE -ne 0) { throw "WiX heat failed: $LASTEXITCODE" }
-          & candle.exe "-dAppVersion=$env:VERSION" "-dSourceDir=$PWD/dist/SerialVision" -out dist/installer/ installer/serial-vision.wxs dist/installer/serial-vision-files.wxs
-          if ($LASTEXITCODE -ne 0) { throw "WiX candle failed: $LASTEXITCODE" }
-          & light.exe -b "$PWD/dist/SerialVision" -out "dist/installer/SerialVision-v$env:VERSION.msi" dist/installer/serial-vision.wixobj dist/installer/serial-vision-files.wixobj
-          if ($LASTEXITCODE -ne 0) { throw "WiX light failed: $LASTEXITCODE" }
+          & candle.exe "-dSourceDir=$PWD/dist/SerialVision" -out dist/installer/ installer/serial-vision-files.wxs
+          if ($LASTEXITCODE -ne 0) { throw "WiX component compile failed: $LASTEXITCODE" }
+          $msiLanguages = @(
+            @{ Code = 'uk'; Culture = 'uk-UA'; Lcid = '1058' },
+            @{ Code = 'en'; Culture = 'en-US'; Lcid = '1033' },
+            @{ Code = 'pl'; Culture = 'pl-PL'; Lcid = '1045' }
+          )
+          foreach ($language in $msiLanguages) {
+            $objectDirectory = "dist/installer/obj-$($language.Code)"
+            New-Item -ItemType Directory -Force $objectDirectory | Out-Null
+            & candle.exe "-dAppVersion=$env:VERSION" "-dProductLanguage=$($language.Lcid)" "-dSourceDir=$PWD/dist/SerialVision" -out "$objectDirectory/" installer/serial-vision.wxs
+            if ($LASTEXITCODE -ne 0) { throw "WiX $($language.Code) compile failed: $LASTEXITCODE" }
+            & light.exe -ext WixUIExtension "-cultures:$($language.Culture)" -b "$PWD/dist/SerialVision" -out "dist/installer/SerialVision-v$env:VERSION-$($language.Code).msi" "$objectDirectory/serial-vision.wixobj" dist/installer/serial-vision-files.wixobj
+            if ($LASTEXITCODE -ne 0) { throw "WiX $($language.Code) link failed: $LASTEXITCODE" }
+          }
           Compress-Archive -Path dist/SerialVision/* -DestinationPath "dist/SerialVision-v$env:VERSION-windows-x64.zip" -Force
 
       - uses: actions/upload-artifact@v4

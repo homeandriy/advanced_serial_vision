@@ -1,7 +1,7 @@
 <!-- section: overview -->
-## O programie Serial Vision
+## O programie Advanced Serial Vision
 
-Serial Vision to lokalna aplikacja do ewidencji sprzętu i pracy ze zdjęciami etykiet fabrycznych. Pomaga odczytać numer seryjny, adres MAC, kod kreskowy lub inny tekst, sprawdzić wynik i zapisać uporządkowaną operację sprzętową. Rekordy i ustawienia pozostają w danych bieżącego użytkownika; codzienna praca nie wymaga Internetu.
+Advanced Serial Vision to lokalna aplikacja do ewidencji sprzętu i pracy ze zdjęciami etykiet fabrycznych. Pomaga odczytać numer seryjny, adres MAC, kod kreskowy lub inny tekst, sprawdzić wynik i zapisać uporządkowaną operację sprzętową. Rekordy i ustawienia pozostają w danych bieżącego użytkownika; codzienna praca nie wymaga Internetu.
 
 Typowy proces to: wybór zdjęcia, lokalne rozpoznanie, ręczna korekta wartości, wybór modelu i zapis rekordu. Zapisane dane można odnaleźć filtrami, otworzyć powiązane zdjęcie, wyeksportować do CSV i uwzględnić w statystykach.
 
@@ -29,7 +29,7 @@ Używaj Obróć w prawo tylko dla właściwego pliku, ponieważ zmienia on zdję
 <!-- section: ocr -->
 ## Lokalne rozpoznawanie OCR
 
-Serial Vision używa RapidOCR lokalnie. Wybór zdjęcia lub uruchomienie OCR nie wysyła go do chmury. Wybierz język najlepiej odpowiadający etykiecie: English dla większości oznaczeń technicznych, Українська lub Polski dla tekstu pomocniczego. Język poprawia rozpoznawanie, lecz nie zastępuje kontroli człowieka.
+Advanced Serial Vision używa RapidOCR lokalnie. Wybór zdjęcia lub uruchomienie OCR nie wysyła go do chmury. Wybierz język najlepiej odpowiadający etykiecie: English dla większości oznaczeń technicznych, Українська lub Polski dla tekstu pomocniczego. Język poprawia rozpoznawanie, lecz nie zastępuje kontroli człowieka.
 
 Wynik OCR można edytować. Skopiuj go z menu kontekstowego lub Edycja i popraw niejednoznaczne znaki przed zapisem. Częste pomyłki to O/0, I/1, S/5 oraz B/8. Jeżeli tekstu nie znaleziono, użyj wyraźniejszego zdjęcia, zmień orientację lub język OCR.
 

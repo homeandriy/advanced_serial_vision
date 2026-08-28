@@ -1,14 +1,14 @@
 <!-- section: overview -->
-## About Serial Vision
+## About Advanced Serial Vision
 
-Serial Vision is a local application for equipment records and photographs of factory labels. It helps an operator extract a serial number, MAC address, barcode or other text, check it, and save a structured equipment operation. Records and settings stay in the current user's local data folder; normal daily work does not require an Internet connection.
+Advanced Serial Vision is a local application for equipment records and photographs of factory labels. It helps an operator extract a serial number, MAC address, barcode or other text, check it, and save a structured equipment operation. Records and settings stay in the current user's local data folder; normal daily work does not require an Internet connection.
 
 The usual workflow is: select a photograph, use local recognition, correct the value when necessary, select a model and save the record. Saved records can be found with filters, linked back to their source photo, exported to CSV and included in statistics.
 
 <!-- section: first-start -->
 ## First start and local data
 
-At first launch, accept the terms and select the root folder containing photographs. Serial Vision reads supported image files from that folder and its subfolders; it does not move them by itself. Choose a folder that the current Windows user can access.
+At first launch, accept the terms and select the root folder containing photographs. Advanced Serial Vision reads supported image files from that folder and its subfolders; it does not move them by itself. Choose a folder that the current Windows user can access.
 
 The image folder is not the application installation folder. The local database, settings and startup log are stored in the user's application-data directory, so updates should not remove equipment records. If a source folder or file is moved later, its existing record stays in the database, but opening the linked photo may no longer work.
 
@@ -29,7 +29,7 @@ Use Rotate right only for the intended source file, because it changes that imag
 <!-- section: ocr -->
 ## Local OCR recognition
 
-Serial Vision uses RapidOCR locally. Selecting or running OCR does not send the image to a cloud service. Choose the OCR language that best matches the label: English for most technical serial labels, Ukrainian or Polish for supporting text. The language improves recognition but does not replace human checking.
+Advanced Serial Vision uses RapidOCR locally. Selecting or running OCR does not send the image to a cloud service. Choose the OCR language that best matches the label: English for most technical serial labels, Ukrainian or Polish for supporting text. The language improves recognition but does not replace human checking.
 
 The OCR result is editable. Copy it from the context menu or Edit menu, then correct ambiguous characters before saving. Typical label mistakes are O/0, I/1, S/5 and B/8. If no text is found, try a clearer source photo, a different orientation or another OCR language.
 

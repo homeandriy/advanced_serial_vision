@@ -24,8 +24,8 @@ def main() -> int:
             return 1
         return apply_update(installer_url, expected_sha256, int(parent_pid), application_path)
     app = QApplication(sys.argv)
-    app.setApplicationName("Serial Vision")
-    app.setOrganizationName("Serial Vision")
+    app.setApplicationName("Advanced Serial Vision")
+    app.setOrganizationName("homeandriy")
     app.setQuitOnLastWindowClosed(False)
     data_directory = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation))
     service = SerialVisionService(Database(data_directory / "serial-vision.sqlite3"))

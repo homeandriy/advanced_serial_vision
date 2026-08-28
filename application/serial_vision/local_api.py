@@ -299,12 +299,12 @@ class LocalApiServer:
         record_id = [{"name": "record_id", "in": "path", "required": True, "description": "Equipment record id, not device_model_id.", "schema": {"type": "integer"}}]
         return {
             "openapi": "3.0.3",
-            "info": {"title": "Serial Vision Local API", "version": "v1", "description": "Local BAS integration API. Use the Authorize button with a Bearer key."},
+            "info": {"title": "Advanced Serial Vision Local API", "version": "v1", "description": "Local BAS integration API. Use the Authorize button with a Bearer key."},
             "servers": [{"url": f"http://127.0.0.1:{self.service.api_port()}/api/v1"}],
             "tags": [{"name": "Application Routes", "description": "Equipment, models, and source-image operations for BAS integrations"}],
             "security": [{"bearerAuth": []}],
             "components": {
-                "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "API key", "description": "Paste the sv_ key issued by Serial Vision."}},
+                "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "API key", "description": "Paste the sv_ key issued by Advanced Serial Vision."}},
                 "schemas": {"Model": model, "Equipment": equipment, "EquipmentWrite": equipment_write, "ImageStatus": image_status, "ImageGet": image_get, "CodeGet": code_get, "Error": error},
             },
             "paths": {

@@ -19,6 +19,7 @@ from serial_vision.ui.buttons import apply_button_icons, button, compact_button,
 from serial_vision.ui.help_dialog import HelpDialog
 from serial_vision.ui.theme import apply_theme
 from serial_vision.updates import ReleaseInfo, check_latest_release, launch_update
+from serial_vision.version import app_version
 
 
 class UpdateWorker(QThread):
@@ -82,7 +83,7 @@ class MainWindow(QMainWindow):
         super().__init__(); self.service = service; self.local_api = LocalApiServer(service); self.locale = service.locale(); self.catalog = ImageCatalog(service.image_directory()); self.selected_image: Path | None = None; self.image_page = 1; self.equipment_page = 1
         self.service.register_launch(); self.startup_log_error = self.service.log_startup("Application startup started"); self.setWindowTitle(self.tr("app_name")); self.setWindowIcon(self.icon()); self.resize(1500, 920); self.create_tray(); self.create_menus(); self.recognition_generation = 0
         self.tabs = QTabWidget(); self.tabs.setIconSize(icon_size(self.service.icon_style())); self.setCentralWidget(self.tabs); self.tabs.addTab(self.recognition(), self.tab_icon("recognition"), self.tr("recognition")); self.tabs.addTab(self.equipment(), self.tab_icon("equipment"), self.tr("equipment")); self.tabs.addTab(self.models(), self.tab_icon("models"), self.tr("models")); self.tabs.addTab(self.statistics(), self.tab_icon("statistics"), self.tr("statistics")); self.api_integration_tab = self.api_integrations(); self.tabs.addTab(self.api_integration_tab, self.tab_icon("api_integrations"), self.tr("api_integrations")); self.api_integration_tab.setEnabled(self.service.api_enabled()); self.tabs.addTab(self.settings(), self.tab_icon("settings"), self.tr("settings")); self.refresh_images(); self.refresh_agents(); self.refresh_equipment(); self.refresh_models(); self.refresh_statistics(); self.refresh_api_integration()
-        self.statusBar().addPermanentWidget(QLabel(self.tr("developer"))); self.statusBar().addPermanentWidget(QLabel(self.tr("version", version=Path("VERSION").read_text().strip())));
+        self.statusBar().addPermanentWidget(QLabel(self.tr("developer"))); self.statusBar().addPermanentWidget(QLabel(self.tr("version", version=app_version())));
         if self.service.api_enabled():
             try: self.local_api.start()
             except OSError as error: QTimer.singleShot(0, lambda: QMessageBox.warning(self, self.tr("error"), self.tr("api_start_failed", error=str(error))))
@@ -154,7 +155,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(header)
 
         details = QFormLayout()
-        version = Path("VERSION").read_text(encoding="utf-8").strip()
+        version = app_version()
         details.addRow(self.tr("version_label"), QLabel(f"v{version}", dialog))
         details.addRow(self.tr("developer_label"), QLabel("homeandriy", dialog))
         website = QLabel('<a href="https://webbooks.com.ua">webbooks.com.ua</a>', dialog)
@@ -207,7 +208,7 @@ class MainWindow(QMainWindow):
             return
         if getattr(self, "update_worker", None) and self.update_worker.isRunning():
             return
-        self.update_worker = UpdateWorker(repository, Path("VERSION").read_text().strip(), self)
+        self.update_worker = UpdateWorker(repository, app_version(), self)
         self.update_worker.checked.connect(lambda release: self.update_checked(release, show_status))
         self.update_worker.failed.connect(lambda error: self.update_failed(error, show_status))
         self.update_worker.start()

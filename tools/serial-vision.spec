@@ -4,7 +4,8 @@ from PyInstaller.utils.hooks import collect_data_files
 
 root = Path(SPECPATH).parent
 datas = (
-    collect_data_files("serial_vision")
+    [(str(root / "VERSION"), ".")]
+    + collect_data_files("serial_vision")
     + collect_data_files("rapidocr")
     + collect_data_files("tzdata")
 )

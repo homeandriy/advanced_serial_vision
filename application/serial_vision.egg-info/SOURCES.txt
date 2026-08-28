@@ -14,6 +14,7 @@ application/serial_vision/main.py
 application/serial_vision/model_import.py
 application/serial_vision/ocr.py
 application/serial_vision/updates.py
+application/serial_vision/version.py
 application/serial_vision.egg-info/PKG-INFO
 application/serial_vision.egg-info/SOURCES.txt
 application/serial_vision.egg-info/dependency_links.txt
@@ -113,3 +114,4 @@ application/tests/test_image_catalog.py
 application/tests/test_local_api.py
 application/tests/test_model_import.py
 application/tests/test_updates.py
+application/tests/test_version.py
