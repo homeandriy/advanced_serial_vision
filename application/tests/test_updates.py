@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from serial_vision.updates import check_latest_release
+from serial_vision.updates import ReleaseInfo, check_latest_release, download_update
 
 
 class _Response:
@@ -41,6 +42,15 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual("0.2.8", release.version)
         self.assertEqual("https://example.test/SerialVision-Setup-v0.2.8.exe", release.installer_url)
         self.assertEqual("abc123", release.installer_sha256)
+
+    @patch("serial_vision.updates._download_installer")
+    def test_downloads_verified_installer_before_apply(self, download_installer) -> None:
+        installer = Path("C:/temporary/SerialVision-Setup-v0.5.6.exe")
+        download_installer.return_value = installer
+        release = ReleaseInfo("0.5.6", "Update", "https://example.test/SerialVision-Setup-v0.5.6.exe", "abc123")
+
+        self.assertEqual(installer, download_update(release))
+        download_installer.assert_called_once_with(release.installer_url, "abc123")
 
     @patch("serial_vision.updates.urllib.request.urlopen")
     def test_ignores_current_or_older_release(self, urlopen) -> None:

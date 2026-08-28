@@ -46,19 +46,29 @@ def check_latest_release(repository: str, current_version: str) -> ReleaseInfo |
     )
 
 
-def launch_update(release: ReleaseInfo, parent_pid: int) -> None:
-    if sys.platform != "win32" or not release.installer_url or not getattr(sys, "frozen", False):
+def download_update(release: ReleaseInfo) -> Path:
+    if not release.installer_url:
         raise RuntimeError("automatic_update_unsupported")
-    arguments = ["--apply-update", release.installer_url, release.installer_sha256 or "", str(parent_pid), sys.executable]
-    subprocess.Popen([sys.executable, *arguments], close_fds=True)
+    return _download_installer(release.installer_url, release.installer_sha256 or "")
 
 
-def apply_update(installer_url: str, expected_sha256: str, parent_pid: int, application_path: str) -> int:
-    if sys.platform != "win32":
+def launch_update(installer_path: Path, parent_pid: int, application_path: str) -> None:
+    if sys.platform != "win32" or not getattr(sys, "frozen", False):
+        raise RuntimeError("automatic_update_unsupported")
+    subprocess.Popen(
+        [sys.executable, "--apply-update", str(installer_path), str(parent_pid), application_path],
+        close_fds=True,
+    )
+
+
+def apply_update(installer_path: str, parent_pid: int, application_path: str) -> int:
+    if sys.platform != "win32" or not Path(installer_path).is_file():
         return 1
-    destination = _download_installer(installer_url, expected_sha256)
     _wait_for_process(parent_pid)
-    installer = subprocess.Popen([str(destination), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], close_fds=True)
+    installer = subprocess.Popen(
+        [installer_path, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+        close_fds=True,
+    )
     if installer.wait() != 0:
         return 1
     subprocess.Popen([application_path], close_fds=True)

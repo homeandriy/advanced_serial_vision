@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## v0.5.6 - 2026-08-28
+
+### Changed
+
+- Update checks now only notify the operator; installation requires explicit confirmation in Help → Check for updates.
+- The application remains open while an approved Windows update is downloaded and SHA-256-verified.
+
+### Fixed
+
+- A per-user application lock prevents a second Serial Vision instance from running during normal use or an update.
+- An update can no longer silently close the application immediately after an update check.
+
+
 ## v0.5.5 - 2026-08-28
 
 ### Added

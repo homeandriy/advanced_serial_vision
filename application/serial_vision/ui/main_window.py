@@ -11,7 +11,7 @@ from PySide6.QtGui import QAction, QDesktopServices, QIcon, QPixmap
 from PySide6.QtMultimedia import QCamera, QImageCapture, QMediaCaptureSession, QMediaDevices
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtCharts import QBarCategoryAxis, QBarSeries, QBarSet, QChart, QChartView, QValueAxis
-from PySide6.QtWidgets import QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QDateEdit, QDateTimeEdit, QDialog, QFileDialog, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QScrollArea, QSplitter, QStyle, QSystemTrayIcon, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QToolButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QAbstractItemView, QApplication, QProgressDialog, QButtonGroup, QCheckBox, QComboBox, QDateEdit, QDateTimeEdit, QDialog, QFileDialog, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QScrollArea, QSplitter, QStyle, QSystemTrayIcon, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QToolButton, QVBoxLayout, QWidget
 from serial_vision.application_service import SerialVisionService
 from serial_vision.barcode import BarcodeRecognizer
 from serial_vision.i18n import SUPPORTED_LOCALES, t
@@ -21,7 +21,7 @@ from serial_vision.ocr import RapidOcrRecognizer
 from serial_vision.ui.buttons import apply_button_icons, button, compact_button, icon_for, icon_size
 from serial_vision.ui.help_dialog import HelpDialog
 from serial_vision.ui.theme import apply_theme
-from serial_vision.updates import ReleaseInfo, check_latest_release, launch_update
+from serial_vision.updates import ReleaseInfo, check_latest_release, download_update, launch_update
 from serial_vision.version import app_version
 
 
@@ -40,6 +40,21 @@ class UpdateWorker(QThread):
         except Exception as error:
             self.failed.emit(str(error))
 
+
+
+class UpdateDownloadWorker(QThread):
+    completed = Signal(str)
+    failed = Signal(str)
+
+    def __init__(self, release: ReleaseInfo, parent=None) -> None:
+        super().__init__(parent)
+        self.release = release
+
+    def run(self) -> None:
+        try:
+            self.completed.emit(str(download_update(self.release)))
+        except (OSError, RuntimeError) as error:
+            self.failed.emit(str(error))
 
 
 class RecognitionWorker(QThread):
@@ -221,19 +236,48 @@ class MainWindow(QMainWindow):
             if show_status:
                 QMessageBox.information(self, self.tr("help"), self.tr("update_not_found"))
             return
-        if sys.platform == "win32" and release.installer_url:
-            try:
-                launch_update(release, os.getpid())
-            except RuntimeError as error:
-                if show_status:
-                    QMessageBox.warning(self, self.tr("error"), self.tr(str(error)))
-                return
-            self.service.log_startup(f"Starting automatic update to {release.version}")
-            self.close()
-            QApplication.quit()
+        if not show_status:
+            self.statusBar().showMessage(self.tr("update_available_notice", version=release.version), 15_000)
             return
-        if show_status:
+        if not release.installer_url or sys.platform != "win32":
             QMessageBox.information(self, self.tr("help"), self.tr("update_available_manual", version=release.version))
+            return
+        details = self.tr("update_available_details", version=release.version, changelog=release.changelog.strip() or self.tr("update_no_changelog"))
+        answer = QMessageBox.question(
+            self,
+            self.tr("update_available_title", version=release.version),
+            details,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.download_and_install_update(release)
+
+    def download_and_install_update(self, release: ReleaseInfo) -> None:
+        self.update_progress = QProgressDialog(self.tr("update_downloading", version=release.version), None, 0, 0, self)
+        self.update_progress.setWindowTitle(self.tr("update_available_title", version=release.version))
+        self.update_progress.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.update_progress.setCancelButton(None)
+        self.update_progress.show()
+        self.update_download_worker = UpdateDownloadWorker(release, self)
+        self.update_download_worker.completed.connect(self.update_downloaded)
+        self.update_download_worker.failed.connect(self.update_download_failed)
+        self.update_download_worker.start()
+
+    def update_downloaded(self, installer_path: str) -> None:
+        self.update_progress.close()
+        try:
+            launch_update(Path(installer_path), os.getpid(), sys.executable)
+        except RuntimeError as error:
+            QMessageBox.warning(self, self.tr("error"), self.tr(str(error)))
+            return
+        self.service.log_startup(f"Starting verified update installer: {installer_path}")
+        self.close()
+        QApplication.quit()
+
+    def update_download_failed(self, error: str) -> None:
+        self.update_progress.close()
+        QMessageBox.warning(self, self.tr("error"), self.tr("update_download_failed", error=error))
 
     def update_failed(self, error: str, show_status: bool) -> None:
         self.service.log_startup(f"Update check failed: {error}")
