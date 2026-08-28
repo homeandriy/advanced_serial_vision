@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## v0.5.2 - 2026-08-28
+
+### Fixed
+
+- Windows release workflow no longer requests a missing Ukrainian WiX UI resource, so it can build all delivery packages.
+
 ## v0.5.1 - 2026-08-28
 
 ### Fixed
