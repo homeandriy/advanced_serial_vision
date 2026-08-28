@@ -30,7 +30,7 @@ model in v0.1.0; the Windows user who launches it is the operator.
    style: system, modern, classic, Windows 98, or Ubuntu 22. The non-system styles are bundled local SVG sets under `assets/icons/` and apply to buttons and tabs. System theme follows
    the OS at application startup; explicit operator choice is retained locally.
 8. When editing an existing record, the operator can open safe API request examples without a Bearer key, or select Copy record. Copy opens a prefilled create form and saving it creates a new record without changing the source record.
-9. In the Scan tab, the operator explicitly starts a local camera, reviews its preview, and explicitly requests a still frame. The frame is processed locally for QR and 1D/2D barcodes, then removed; neither video nor frames are sent to a network service.
+9. The Scan tab is placed immediately before API integrations. The operator explicitly starts and can explicitly stop a local camera, reviews its preview, and explicitly requests a still frame. Switching away from the Scan tab automatically stops the camera. The frame is processed locally for QR and 1D/2D barcodes, then removed; neither video nor frames are sent to a network service.
 10. The operator creates, edits, or deletes equipment models, including their type and
    service. The models table shows each model usage count and supports sorting by
    name and numeric usage count. A model still cannot be deleted while equipment

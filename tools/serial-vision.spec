@@ -5,6 +5,8 @@ from PyInstaller.utils.hooks import collect_data_files
 root = Path(SPECPATH).parent
 datas = (
     [(str(root / "VERSION"), ".")]
+    + [(str(root / "documents" / f"license-agreement-{language}.md"), "licenses") for language in ("uk", "en", "pl")]
+    + [(str(root / "LICENSE.md"), ".")]
     + collect_data_files("serial_vision")
     + collect_data_files("rapidocr")
     + collect_data_files("tzdata")

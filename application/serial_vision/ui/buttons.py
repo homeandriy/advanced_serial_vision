@@ -33,6 +33,7 @@ BUTTONS: dict[str, QStyle.StandardPixmap] = {
     "camera": QStyle.StandardPixmap.SP_ComputerIcon,
     "scan": QStyle.StandardPixmap.SP_ComputerIcon,
     "capture": QStyle.StandardPixmap.SP_DialogSaveButton,
+    "stop": QStyle.StandardPixmap.SP_MediaStop,
     "api_example": QStyle.StandardPixmap.SP_DialogHelpButton,
     "copy_record": QStyle.StandardPixmap.SP_FileDialogNewFolder,
 }
@@ -82,8 +83,13 @@ def apply_button_icons(style: str) -> None:
 def icon_for(parent: QWidget, action: str) -> QIcon:
     app = QApplication.instance()
     style = str(app.property("icon_style")) if app is not None and app.property("icon_style") else "system"
-    asset = Path(__file__).parents[1] / "assets" / "icons" / style / f"{action}.svg"
-    return QIcon(str(asset)) if style != "system" and asset.is_file() else parent.style().standardIcon(BUTTONS[action])
+    icon_root = Path(__file__).parents[1] / "assets" / "icons"
+    asset = icon_root / style / f"{action}.svg"
+    if style != "system" and asset.is_file():
+        return QIcon(str(asset))
+    if action in {"scan", "camera", "stop"}:
+        return QIcon(str(icon_root / f"{action}.svg"))
+    return parent.style().standardIcon(BUTTONS[action])
 
 
 def _set_icon(control: QPushButton | QToolButton, action: str) -> None:

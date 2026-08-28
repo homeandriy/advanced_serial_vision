@@ -4,6 +4,7 @@
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
     <UIRef Id="WixUI_InstallDir" />
     <UIRef Id="WixUI_ErrorProgressText" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.LicenseRtf)" />
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of Advanced Serial Vision is already installed." />
     <MediaTemplate EmbedCab="yes" />

@@ -27,12 +27,13 @@ ShowLanguageDialog=auto
 LanguageDetectionMethod=uilanguage
 
 [Languages]
-Name: "uk"; MessagesFile: "compiler:Languages\Ukrainian.isl"
-Name: "en"; MessagesFile: "compiler:Default.isl"
-Name: "pl"; MessagesFile: "compiler:Languages\Polish.isl"
+Name: "uk"; MessagesFile: "compiler:Languages\Ukrainian.isl"; LicenseFile: "license-uk.rtf"
+Name: "en"; MessagesFile: "compiler:Default.isl"; LicenseFile: "license-en.rtf"
+Name: "pl"; MessagesFile: "compiler:Languages\Polish.isl"; LicenseFile: "license-pl.rtf"
 
 [Files]
 Source: "..\dist\SerialVision\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "license-*.rtf"; DestDir: "{app}\licenses"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\Advanced Serial Vision"; Filename: "{app}\{#AppExeName}"

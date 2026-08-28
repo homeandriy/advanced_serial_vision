@@ -8,8 +8,12 @@ package_root="$root/dist/deb-root"
 package_name="serial-vision_${version}_amd64"
 
 rm -rf "$package_root"
-install -d "$package_root/DEBIAN" "$package_root/usr/bin" "$package_root/usr/lib/serial-vision"
+install -d "$package_root/DEBIAN" "$package_root/usr/bin" "$package_root/usr/lib/serial-vision" "$package_root/usr/share/doc/advanced-serial-vision"
 cp -a "$executable/." "$package_root/usr/lib/serial-vision/"
+install -m 0644 "$root/LICENSE.md" "$package_root/usr/share/doc/advanced-serial-vision/LICENSE.md"
+install -m 0644 "$root/documents/license-agreement-uk.md" "$package_root/usr/share/doc/advanced-serial-vision/LICENSE.uk.md"
+install -m 0644 "$root/documents/license-agreement-en.md" "$package_root/usr/share/doc/advanced-serial-vision/LICENSE.en.md"
+install -m 0644 "$root/documents/license-agreement-pl.md" "$package_root/usr/share/doc/advanced-serial-vision/LICENSE.pl.md"
 chmod 0755 "$package_root/usr/lib/serial-vision/SerialVision"
 ln -s ../lib/serial-vision/SerialVision "$package_root/usr/bin/serial-vision"
 

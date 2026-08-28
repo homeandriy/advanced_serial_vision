@@ -69,9 +69,8 @@ jobs:
           & candle.exe "-dSourceDir=$PWD/dist/SerialVision" -out dist/installer/ dist/installer/serial-vision-files.wxs
           if ($LASTEXITCODE -ne 0) { throw "WiX component compile failed: $LASTEXITCODE" }
           $msiLanguages = @(
-            # WiX v3 ships no Ukrainian WixUI resource. The Ukrainian MSI keeps
-            # its Ukrainian Windows product locale while using the English WixUI
-            # fallback; the EXE installer contains the full Ukrainian wizard.
+            # WiX v3 has no Ukrainian built-in wizard resource. The Ukrainian
+            # package uses its Ukrainian Windows product locale and Ukrainian EULA.
             @{ Code = 'uk'; Culture = 'en-US'; Lcid = '1058' },
             @{ Code = 'en'; Culture = 'en-US'; Lcid = '1033' },
             @{ Code = 'pl'; Culture = 'pl-PL'; Lcid = '1045' }
@@ -79,7 +78,7 @@ jobs:
           foreach ($language in $msiLanguages) {
             $objectDirectory = "dist/installer/obj-$($language.Code)"
             New-Item -ItemType Directory -Force $objectDirectory | Out-Null
-            & candle.exe "-dAppVersion=$env:VERSION" "-dProductLanguage=$($language.Lcid)" "-dSourceDir=$PWD/dist/SerialVision" -out "$objectDirectory/" installer/serial-vision.wxs
+            & candle.exe "-dAppVersion=$env:VERSION" "-dProductLanguage=$($language.Lcid)" "-dLicenseRtf=$PWD/installer/license-$($language.Code).rtf" "-dSourceDir=$PWD/dist/SerialVision" -out "$objectDirectory/" installer/serial-vision.wxs
             if ($LASTEXITCODE -ne 0) { throw "WiX $($language.Code) compile failed: $LASTEXITCODE" }
             & light.exe -ext WixUIExtension "-cultures:$($language.Culture)" -b "$PWD/dist/SerialVision" -out "dist/installer/SerialVision-v$env:VERSION-$($language.Code).msi" "$objectDirectory/serial-vision.wixobj" dist/installer/serial-vision-files.wixobj
             if ($LASTEXITCODE -ne 0) { throw "WiX $($language.Code) link failed: $LASTEXITCODE" }

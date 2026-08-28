@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## v0.5.5 - 2026-08-28
+
+### Added
+
+- Ukrainian, English, and Polish end-user licence agreements for the EXE and MSI installers, portable Windows application, Debian package, and source archive.
+- Dedicated eye and eye-off icons for the Scan tab and camera controls in every bundled icon style.
+
+### Changed
+
+- The Scan tab now appears immediately before API integrations; the camera has an explicit stop control and automatically stops when leaving the tab.
+
+### Fixed
+
+- Windows MSI builds receive the language-specific licence file instead of the WiX placeholder agreement.
+
 ## v0.5.4 - 2026-08-28
 
 ### Added

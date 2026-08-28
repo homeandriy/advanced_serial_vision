@@ -4,10 +4,10 @@ Push анотованого тегу `v*` запускає workflow **Build and 
 перевірки він створює GitHub Release з такими файлами:
 
 - `SerialVision.exe` — portable Windows-застосунок;
-- `SerialVision-Setup-v*.exe` — Windows-інсталятор Inno Setup з українською, англійською і польською;
-- `SerialVision-v*-uk.msi`, `SerialVision-v*-en.msi`, `SerialVision-v*-pl.msi` — Windows MSI-інсталятори; англійський і польський містять локалізований WiX UI, а український зберігає український системний locale з англійським fallback UI;
-- `serial-vision_*.deb` — пакет Debian/Ubuntu для x86_64;
-- `serial-vision-*-source.tar.gz` — вихідний код для Linux.
+- `SerialVision-Setup-v*.exe` — Windows-інсталятор Inno Setup з українською, англійською і польською ліцензійними угодами;
+- `SerialVision-v*-uk.msi`, `SerialVision-v*-en.msi`, `SerialVision-v*-pl.msi` — Windows MSI-інсталятори: кожен показує ліцензійну угоду відповідною мовою;
+- `serial-vision_*.deb` — пакет Debian/Ubuntu для x86_64 з трьома копіями ліцензії у `/usr/share/doc/advanced-serial-vision/`;
+- `serial-vision-*-source.tar.gz` — вихідний код для Linux, включно з `LICENSE.md` та перекладами в `documents/`.
 
 ## Версії
 

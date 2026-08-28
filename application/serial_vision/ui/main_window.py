@@ -85,7 +85,7 @@ class MainWindow(QMainWindow):
     def __init__(self, service: SerialVisionService) -> None:
         super().__init__(); self.service = service; self.local_api = LocalApiServer(service); self.locale = service.locale(); self.catalog = ImageCatalog(service.image_directory()); self.selected_image: Path | None = None; self.image_page = 1; self.equipment_page = 1; self.camera: QCamera | None = None; self.camera_capture: QImageCapture | None = None; self.camera_session: QMediaCaptureSession | None = None
         self.service.register_launch(); self.startup_log_error = self.service.log_startup("Application startup started"); self.setWindowTitle(self.tr("app_name")); self.setWindowIcon(self.icon()); self.resize(1500, 920); self.create_tray(); self.create_menus(); self.recognition_generation = 0
-        self.tabs = QTabWidget(); self.tabs.setIconSize(icon_size(self.service.icon_style())); self.setCentralWidget(self.tabs); self.tabs.addTab(self.recognition(), self.tab_icon("recognition"), self.tr("recognition")); self.tabs.addTab(self.camera_scan(), self.tab_icon("camera"), self.tr("scan")); self.tabs.addTab(self.equipment(), self.tab_icon("equipment"), self.tr("equipment")); self.tabs.addTab(self.models(), self.tab_icon("models"), self.tr("models")); self.tabs.addTab(self.statistics(), self.tab_icon("statistics"), self.tr("statistics")); self.api_integration_tab = self.api_integrations(); self.tabs.addTab(self.api_integration_tab, self.tab_icon("api_integrations"), self.tr("api_integrations")); self.api_integration_tab.setEnabled(self.service.api_enabled()); self.tabs.addTab(self.settings(), self.tab_icon("settings"), self.tr("settings")); self.refresh_images(); self.refresh_agents(); self.refresh_equipment(); self.refresh_models(); self.refresh_statistics(); self.refresh_api_integration()
+        self.tabs = QTabWidget(); self.tabs.setIconSize(icon_size(self.service.icon_style())); self.setCentralWidget(self.tabs); self.tabs.addTab(self.recognition(), self.tab_icon("recognition"), self.tr("recognition")); self.tabs.addTab(self.equipment(), self.tab_icon("equipment"), self.tr("equipment")); self.tabs.addTab(self.models(), self.tab_icon("models"), self.tr("models")); self.tabs.addTab(self.statistics(), self.tab_icon("statistics"), self.tr("statistics")); self.camera_tab = self.camera_scan(); self.tabs.addTab(self.camera_tab, self.tab_icon("scan"), self.tr("scan")); self.api_integration_tab = self.api_integrations(); self.tabs.addTab(self.api_integration_tab, self.tab_icon("api_integrations"), self.tr("api_integrations")); self.api_integration_tab.setEnabled(self.service.api_enabled()); self.tabs.addTab(self.settings(), self.tab_icon("settings"), self.tr("settings")); self.tabs.currentChanged.connect(self.on_tab_changed); self.refresh_images(); self.refresh_agents(); self.refresh_equipment(); self.refresh_models(); self.refresh_statistics(); self.refresh_api_integration()
         self.statusBar().addPermanentWidget(QLabel(self.tr("developer"))); self.statusBar().addPermanentWidget(QLabel(self.tr("version", version=app_version())));
         if self.service.api_enabled():
             try: self.local_api.start()
@@ -127,7 +127,7 @@ class MainWindow(QMainWindow):
         delete_action.triggered.connect(self.delete_image)
 
         view_menu = self.menuBar().addMenu(self.tr("menu_view"))
-        for index, key in enumerate(("recognition", "scan", "equipment", "models", "statistics", "api_integrations", "settings")):
+        for index, key in enumerate(("recognition", "equipment", "models", "statistics", "scan", "api_integrations", "settings")):
             action = view_menu.addAction(self.tr(key))
             action.triggered.connect(lambda _checked=False, current=index: self.tabs.setCurrentIndex(current))
 
@@ -306,12 +306,15 @@ class MainWindow(QMainWindow):
         self.camera_refresh.clicked.connect(self.refresh_camera_devices)
         self.camera_start = button(page, "camera", self.tr("camera_start"))
         self.camera_start.clicked.connect(self.start_camera)
+        self.camera_stop_button = button(page, "stop", self.tr("camera_stop"))
+        self.camera_stop_button.clicked.connect(self.stop_camera)
         self.camera_capture_button = button(page, "capture", self.tr("camera_capture"))
         self.camera_capture_button.clicked.connect(self.capture_camera_frame)
         controls.addWidget(QLabel(self.tr("camera")))
         controls.addWidget(self.camera_selector, 1)
         controls.addWidget(self.camera_refresh)
         controls.addWidget(self.camera_start)
+        controls.addWidget(self.camera_stop_button)
         controls.addWidget(self.camera_capture_button)
         layout.addLayout(controls)
         self.camera_status = QLabel(self.tr("camera_unavailable"), page)
@@ -335,6 +338,7 @@ class MainWindow(QMainWindow):
             self.camera_selector.addItem(device.description(), device)
         available = self.camera_selector.count() > 0
         self.camera_start.setEnabled(available)
+        self.camera_stop_button.setEnabled(False)
         self.camera_capture_button.setEnabled(False)
         self.camera_status.setText(self.tr("camera_select") if available else self.tr("camera_unavailable"))
 
@@ -343,7 +347,7 @@ class MainWindow(QMainWindow):
         if device is None:
             self.camera_status.setText(self.tr("camera_unavailable"))
             return
-        self.stop_camera()
+        self.stop_camera(update_status=False)
         try:
             self.camera = QCamera(device, self)
             self.camera_capture = QImageCapture(self)
@@ -358,15 +362,28 @@ class MainWindow(QMainWindow):
             self.stop_camera()
             self.camera_status.setText(self.tr("camera_error", error=str(error)))
             return
+        self.camera_start.setEnabled(False)
+        self.camera_stop_button.setEnabled(True)
         self.camera_capture_button.setEnabled(True)
         self.camera_status.setText(self.tr("camera_ready"))
 
-    def stop_camera(self) -> None:
+    def stop_camera(self, *, update_status: bool = True) -> None:
         if self.camera is not None:
             self.camera.stop()
         self.camera = None
         self.camera_capture = None
         self.camera_session = None
+        if hasattr(self, "camera_capture_button"):
+            available = self.camera_selector.count() > 0
+            self.camera_start.setEnabled(available)
+            self.camera_stop_button.setEnabled(False)
+            self.camera_capture_button.setEnabled(False)
+            if update_status:
+                self.camera_status.setText(self.tr("camera_stopped") if available else self.tr("camera_unavailable"))
+
+    def on_tab_changed(self, _index: int) -> None:
+        if self.tabs.currentWidget() is not self.camera_tab:
+            self.stop_camera()
 
     def capture_camera_frame(self) -> None:
         if self.camera_capture is None:
@@ -667,7 +684,7 @@ class MainWindow(QMainWindow):
         if app is not None:
             apply_button_icons(icon_style)
             self.tabs.setIconSize(icon_size(icon_style))
-            for index, name in enumerate(("recognition", "scan", "equipment", "models", "statistics", "api_integrations", "settings")):
+            for index, name in enumerate(("recognition", "equipment", "models", "statistics", "scan", "api_integrations", "settings")):
                 self.tabs.setTabIcon(index, self.tab_icon(name))
             apply_theme(app, self.theme_choice.currentData())
         QMessageBox.information(self, self.tr("settings"), self.tr("settings_saved"))
