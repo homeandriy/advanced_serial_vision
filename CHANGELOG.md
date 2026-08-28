@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## v0.5.3 - 2026-08-28
+
+### Fixed
+
+- Windows release workflow compiles the WiX file from the actual generated installer directory.
+
 ## v0.5.2 - 2026-08-28
 
 ### Fixed
