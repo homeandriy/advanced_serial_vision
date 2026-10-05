@@ -18,6 +18,9 @@ class ReleaseInfo:
     changelog: str
     installer_url: str | None
     installer_sha256: str | None = None
+    release_url: str | None = None
+    linux_package_url: str | None = None
+    linux_package_sha256: str | None = None
 
 
 def check_latest_release(repository: str, current_version: str) -> ReleaseInfo | None:
@@ -35,14 +38,18 @@ def check_latest_release(repository: str, current_version: str) -> ReleaseInfo |
         (asset for asset in payload.get("assets", []) if str(asset.get("name", "")).lower().endswith(".exe")),
         None,
     )
-    if installer_asset is None:
-        return ReleaseInfo(version, str(payload.get("body", "")), None)
-    digest = str(installer_asset.get("digest", ""))
+    linux_asset = next(
+        (asset for asset in payload.get("assets", []) if str(asset.get("name", "")).lower().endswith(".deb")),
+        None,
+    )
     return ReleaseInfo(
         version,
         str(payload.get("body", "")),
-        str(installer_asset["browser_download_url"]),
-        digest.removeprefix("sha256:") if digest.startswith("sha256:") else None,
+        _asset_url(installer_asset),
+        _asset_digest(installer_asset),
+        str(payload.get("html_url", "")) or None,
+        _asset_url(linux_asset),
+        _asset_digest(linux_asset),
     )
 
 
@@ -50,6 +57,14 @@ def download_update(release: ReleaseInfo) -> Path:
     if not release.installer_url:
         raise RuntimeError("automatic_update_unsupported")
     return _download_installer(release.installer_url, release.installer_sha256 or "")
+
+
+def download_linux_update(release: ReleaseInfo) -> Path:
+    if not release.linux_package_url:
+        raise RuntimeError("linux_update_unavailable")
+    downloads_directory = Path.home() / "Downloads"
+    destination_directory = downloads_directory if downloads_directory.is_dir() else None
+    return _download_package(release.linux_package_url, release.linux_package_sha256 or "", destination_directory)
 
 
 def launch_update(installer_path: Path, parent_pid: int, application_path: str) -> None:
@@ -76,7 +91,15 @@ def apply_update(installer_path: str, parent_pid: int, application_path: str) ->
 
 
 def _download_installer(url: str, expected_sha256: str) -> Path:
-    destination_directory = Path(tempfile.gettempdir()) / "serial-vision-update"
+    return _download_asset(url, expected_sha256)
+
+
+def _download_package(url: str, expected_sha256: str, destination_directory: Path | None = None) -> Path:
+    return _download_asset(url, expected_sha256, destination_directory)
+
+
+def _download_asset(url: str, expected_sha256: str, destination_directory: Path | None = None) -> Path:
+    destination_directory = destination_directory or Path(tempfile.gettempdir()) / "serial-vision-update"
     destination_directory.mkdir(parents=True, exist_ok=True)
     filename = Path(url.split("?", 1)[0]).name or "SerialVision-Setup.exe"
     destination = destination_directory / filename
@@ -90,6 +113,20 @@ def _download_installer(url: str, expected_sha256: str) -> Path:
         destination.unlink(missing_ok=True)
         raise RuntimeError("update_integrity_failed")
     return destination
+
+
+def _asset_url(asset: object | None) -> str | None:
+    if not isinstance(asset, dict):
+        return None
+    url = str(asset.get("browser_download_url", ""))
+    return url or None
+
+
+def _asset_digest(asset: object | None) -> str | None:
+    if not isinstance(asset, dict):
+        return None
+    digest = str(asset.get("digest", ""))
+    return digest.removeprefix("sha256:") if digest.startswith("sha256:") else None
 
 
 def _wait_for_process(process_id: int) -> None:

@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from serial_vision.updates import ReleaseInfo, check_latest_release, download_update
+from serial_vision.updates import ReleaseInfo, check_latest_release, download_linux_update, download_update
 
 
 class _Response:
@@ -28,10 +28,15 @@ class UpdateTests(unittest.TestCase):
         urlopen.return_value = _Response({
             "tag_name": "v0.2.8",
             "body": "Update",
+            "html_url": "https://example.test/releases/tag/v0.2.8",
             "assets": [{
                 "name": "SerialVision-Setup-v0.2.8.exe",
                 "browser_download_url": "https://example.test/SerialVision-Setup-v0.2.8.exe",
                 "digest": "sha256:abc123",
+            }, {
+                "name": "serial-vision_0.2.8_amd64.deb",
+                "browser_download_url": "https://example.test/serial-vision_0.2.8_amd64.deb",
+                "digest": "sha256:def456",
             }],
         })
 
@@ -42,6 +47,9 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual("0.2.8", release.version)
         self.assertEqual("https://example.test/SerialVision-Setup-v0.2.8.exe", release.installer_url)
         self.assertEqual("abc123", release.installer_sha256)
+        self.assertEqual("https://example.test/releases/tag/v0.2.8", release.release_url)
+        self.assertEqual("https://example.test/serial-vision_0.2.8_amd64.deb", release.linux_package_url)
+        self.assertEqual("def456", release.linux_package_sha256)
 
     @patch("serial_vision.updates._download_installer")
     def test_downloads_verified_installer_before_apply(self, download_installer) -> None:
@@ -51,6 +59,18 @@ class UpdateTests(unittest.TestCase):
 
         self.assertEqual(installer, download_update(release))
         download_installer.assert_called_once_with(release.installer_url, "abc123")
+
+    @patch("serial_vision.updates._download_package")
+    def test_downloads_verified_linux_package(self, download_package) -> None:
+        package = Path("/home/user/Downloads/serial-vision_0.5.6_amd64.deb")
+        download_package.return_value = package
+        release = ReleaseInfo(
+            "0.5.6", "Update", None, release_url="https://example.test/release",
+            linux_package_url="https://example.test/serial-vision_0.5.6_amd64.deb", linux_package_sha256="abc123",
+        )
+
+        self.assertEqual(package, download_linux_update(release))
+        download_package.assert_called_once_with(release.linux_package_url, "abc123", unittest.mock.ANY)
 
     @patch("serial_vision.updates.urllib.request.urlopen")
     def test_ignores_current_or_older_release(self, urlopen) -> None:

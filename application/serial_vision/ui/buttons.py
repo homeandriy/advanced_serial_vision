@@ -22,6 +22,7 @@ BUTTONS: dict[str, QStyle.StandardPixmap] = {
     "next": QStyle.StandardPixmap.SP_ArrowForward,
     "ocr": QStyle.StandardPixmap.SP_FileDialogContentsView,
     "open": QStyle.StandardPixmap.SP_DialogOpenButton,
+    "download": QStyle.StandardPixmap.SP_ArrowDown,
     "recognition": QStyle.StandardPixmap.SP_FileDialogContentsView,
     "equipment": QStyle.StandardPixmap.SP_DriveHDIcon,
     "models": QStyle.StandardPixmap.SP_FileDialogDetailedView,

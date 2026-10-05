@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## v0.6.0 - 2026-10-06
+
+### Added
+
+- Update dialog shows the published release changelog and lets the operator install now or defer the update without downloading anything.
+- Ubuntu and other supported Linux desktops can download a SHA-256-verified DEB package and open it in the system package installer.
+- Barcode recognition tries enlarged grayscale and contrast-enhanced image variants; serial and MAC-like values found in a barcode label by OCR are shown as a fallback.
+
+### Changed
+
+- OCR, barcode and AI result fields use a larger 16 px font for improved readability.
+
+### Fixed
+
+- The unavailable barcode-recognition-module message is localized in Ukrainian, English and Polish.
+
 ## v0.5.6 - 2026-08-28
 
 ### Changed
@@ -139,4 +155,3 @@
 - Added local SQLite storage, image-folder browsing, image rotation, RapidOCR OCR,
   equipment and model records, CSV export, and monthly operation statistics.
 - Added project-level architecture, UI, testing, and release conventions.
-

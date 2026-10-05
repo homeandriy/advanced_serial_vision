@@ -13,7 +13,7 @@ from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtCharts import QBarCategoryAxis, QBarSeries, QBarSet, QChart, QChartView, QValueAxis
 from PySide6.QtWidgets import QAbstractItemView, QApplication, QProgressDialog, QButtonGroup, QCheckBox, QComboBox, QDateEdit, QDateTimeEdit, QDialog, QFileDialog, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMenu, QMessageBox, QScrollArea, QSplitter, QStyle, QSystemTrayIcon, QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QToolButton, QVBoxLayout, QWidget
 from serial_vision.application_service import SerialVisionService
-from serial_vision.barcode import BarcodeRecognizer
+from serial_vision.barcode import BarcodeRecognizer, extract_printed_codes
 from serial_vision.i18n import SUPPORTED_LOCALES, t
 from serial_vision.image_catalog import ImageCatalog
 from serial_vision.local_api import LocalApiServer
@@ -21,7 +21,7 @@ from serial_vision.ocr import RapidOcrRecognizer
 from serial_vision.ui.buttons import apply_button_icons, button, compact_button, icon_for, icon_size
 from serial_vision.ui.help_dialog import HelpDialog
 from serial_vision.ui.theme import apply_theme
-from serial_vision.updates import ReleaseInfo, check_latest_release, download_update, launch_update
+from serial_vision.updates import ReleaseInfo, check_latest_release, download_linux_update, download_update, launch_update
 from serial_vision.version import app_version
 
 
@@ -46,13 +46,15 @@ class UpdateDownloadWorker(QThread):
     completed = Signal(str)
     failed = Signal(str)
 
-    def __init__(self, release: ReleaseInfo, parent=None) -> None:
+    def __init__(self, release: ReleaseInfo, target: str, parent=None) -> None:
         super().__init__(parent)
         self.release = release
+        self.target = target
 
     def run(self) -> None:
         try:
-            self.completed.emit(str(download_update(self.release)))
+            downloader = download_update if self.target == "windows" else download_linux_update
+            self.completed.emit(str(downloader(self.release)))
         except (OSError, RuntimeError) as error:
             self.failed.emit(str(error))
 
@@ -60,10 +62,12 @@ class UpdateDownloadWorker(QThread):
 class RecognitionWorker(QThread):
     completed = Signal(str, str, str, str)
 
-    def __init__(self, image_path: Path, language: str, parent=None) -> None:
+    def __init__(self, image_path: Path, language: str, barcode_fallback_label: str, barcode_module_unavailable: str, parent=None) -> None:
         super().__init__(parent)
         self.image_path = image_path
         self.language = language
+        self.barcode_fallback_label = barcode_fallback_label
+        self.barcode_module_unavailable = barcode_module_unavailable
 
     def run(self) -> None:
         ocr_text = ""
@@ -73,9 +77,14 @@ class RecognitionWorker(QThread):
         except RuntimeError as error:
             ocr_text = str(error)
         try:
-            barcode_text = BarcodeRecognizer().recognize(self.image_path)
+            barcode_text = BarcodeRecognizer(self.barcode_module_unavailable).recognize(self.image_path)
         except RuntimeError as error:
             barcode_text = str(error)
+        decoded_values = {line.partition(": ")[2] for line in barcode_text.splitlines() if ": " in line}
+        fallback_values = [value for value in extract_printed_codes(ocr_text) if value not in decoded_values]
+        if fallback_values:
+            fallback_text = "\n".join(f"{self.barcode_fallback_label}: {value}" for value in fallback_values)
+            barcode_text = "\n".join(value for value in (barcode_text, fallback_text) if value)
         self.completed.emit(str(self.image_path), ocr_text, barcode_text, "")
 
 
@@ -236,36 +245,70 @@ class MainWindow(QMainWindow):
             if show_status:
                 QMessageBox.information(self, self.tr("help"), self.tr("update_not_found"))
             return
-        if not show_status:
-            self.statusBar().showMessage(self.tr("update_available_notice", version=release.version), 15_000)
-            return
-        if not release.installer_url or sys.platform != "win32":
-            QMessageBox.information(self, self.tr("help"), self.tr("update_available_manual", version=release.version))
-            return
-        details = self.tr("update_available_details", version=release.version, changelog=release.changelog.strip() or self.tr("update_no_changelog"))
-        answer = QMessageBox.question(
-            self,
-            self.tr("update_available_title", version=release.version),
-            details,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        )
-        if answer == QMessageBox.StandardButton.Yes:
-            self.download_and_install_update(release)
+        self.show_update_dialog(release)
 
-    def download_and_install_update(self, release: ReleaseInfo) -> None:
+    def show_update_dialog(self, release: ReleaseInfo) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle(self.tr("update_available_title", version=release.version))
+        dialog.setWindowIcon(self.icon())
+        layout = QVBoxLayout(dialog)
+        details = QLabel(self.tr("update_available_details", version=release.version), dialog)
+        details.setWordWrap(True)
+        layout.addWidget(details)
+        layout.addWidget(QLabel(self.tr("update_release_notes"), dialog))
+        changelog = QTextEdit(dialog)
+        changelog.setReadOnly(True)
+        changelog.setPlainText(release.changelog.strip() or self.tr("update_no_changelog"))
+        layout.addWidget(changelog, 1)
+        actions = QHBoxLayout()
+        actions.addStretch()
+        if sys.platform == "win32" and release.installer_url:
+            install = button(dialog, "download", self.tr("download_and_install"))
+            install.clicked.connect(lambda: self.download_and_install_update(release, dialog))
+            actions.addWidget(install)
+        elif sys.platform.startswith("linux") and release.linux_package_url:
+            install = button(dialog, "download", self.tr("download_deb"))
+            install.clicked.connect(lambda: self.download_and_open_linux_update(release, dialog))
+            actions.addWidget(install)
+        elif release.release_url:
+            open_release = button(dialog, "open", self.tr("open_release"))
+            open_release.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(release.release_url)))
+            actions.addWidget(open_release)
+        later = button(dialog, "close", self.tr("later"))
+        later.clicked.connect(dialog.reject)
+        actions.addWidget(later)
+        layout.addLayout(actions)
+        dialog.resize(620, 460)
+        dialog.exec()
+
+    def download_and_install_update(self, release: ReleaseInfo, dialog: QDialog) -> None:
+        dialog.accept()
+        self.start_update_download(release, "windows")
+
+    def download_and_open_linux_update(self, release: ReleaseInfo, dialog: QDialog) -> None:
+        dialog.accept()
+        self.start_update_download(release, "linux")
+
+    def start_update_download(self, release: ReleaseInfo, target: str) -> None:
+        self.update_download_target = target
         self.update_progress = QProgressDialog(self.tr("update_downloading", version=release.version), None, 0, 0, self)
         self.update_progress.setWindowTitle(self.tr("update_available_title", version=release.version))
         self.update_progress.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.update_progress.setCancelButton(None)
         self.update_progress.show()
-        self.update_download_worker = UpdateDownloadWorker(release, self)
+        self.update_download_worker = UpdateDownloadWorker(release, target, self)
         self.update_download_worker.completed.connect(self.update_downloaded)
         self.update_download_worker.failed.connect(self.update_download_failed)
         self.update_download_worker.start()
 
     def update_downloaded(self, installer_path: str) -> None:
         self.update_progress.close()
+        if self.update_download_target == "linux":
+            if not QDesktopServices.openUrl(QUrl.fromLocalFile(installer_path)):
+                QMessageBox.warning(self, self.tr("error"), self.tr("linux_update_open_failed", path=installer_path))
+                return
+            QMessageBox.information(self, self.tr("help"), self.tr("linux_update_ready", path=installer_path))
+            return
         try:
             launch_update(Path(installer_path), os.getpid(), sys.executable)
         except RuntimeError as error:
@@ -337,9 +380,9 @@ class MainWindow(QMainWindow):
         images_heading = QHBoxLayout(); images_heading.addWidget(QLabel(self.tr("images"))); images_heading.addWidget(self.help_button("images", "images")); images_heading.addStretch(); left.addLayout(images_heading); left.addLayout(actions); pager = QHBoxLayout(); self.image_previous = button(photos, "previous", self.tr("previous_page")); self.image_previous.clicked.connect(lambda: self.change_image_page(-1)); self.image_page_label = QLabel(); self.image_next = button(photos, "next", self.tr("next_page")); self.image_next.clicked.connect(lambda: self.change_image_page(1)); pager.addWidget(self.image_previous); pager.addWidget(self.image_page_label); pager.addWidget(self.image_next); left.addLayout(pager)
         self.image_cards = QScrollArea(); self.image_cards.setWidgetResizable(True); self.image_cards_content = QWidget(); self.image_cards_layout = QVBoxLayout(self.image_cards_content); self.image_cards_layout.setAlignment(Qt.AlignmentFlag.AlignTop); self.image_cards.setWidget(self.image_cards_content); self.image_button_group = QButtonGroup(self); self.image_button_group.setExclusive(True)
         self.preview = QLabel(self.tr("select_image")); self.preview.setObjectName("imagePreview"); self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter); self.image_splitter = QSplitter(Qt.Orientation.Vertical); self.image_splitter.setChildrenCollapsible(False); self.image_splitter.addWidget(self.image_cards); self.image_splitter.addWidget(self.preview); self.image_splitter.setSizes([360, 480]); self.image_splitter.setStretchFactor(0, 1); self.image_splitter.setStretchFactor(1, 2); left.addWidget(self.image_splitter, 1); split.addWidget(photos)
-        results = QWidget(); right = QVBoxLayout(results); ocr_heading = QHBoxLayout(); ocr_heading.addWidget(QLabel(self.tr("ocr"))); ocr_heading.addWidget(self.help_button("ocr", "ocr")); ocr_heading.addStretch(); right.addLayout(ocr_heading); ocrbar = QHBoxLayout(); self.ocr_language = QComboBox(); self.ocr_language.addItem("English", "eng"); self.ocr_language.addItem("Українська", "ukr"); self.ocr_language.addItem("Polski", "pol"); ocrbar.addWidget(QLabel(self.tr("ocr_language"))); ocrbar.addWidget(self.ocr_language); self.ocr_button = button(results, "ocr", self.tr("run_ocr")); self.ocr_button.clicked.connect(self.run_ocr); ocrbar.addWidget(self.ocr_button); right.addLayout(ocrbar); self.ocr_result = QTextEdit(self.tr("ocr_empty")); self.bind_result_menu(self.ocr_result); right.addWidget(self.ocr_result, 1)
-        barcode_heading = QHBoxLayout(); barcode_heading.addWidget(QLabel(self.tr("barcodes"))); barcode_heading.addWidget(self.help_button("barcode-ai", "barcodes")); barcode_heading.addStretch(); right.addLayout(barcode_heading); self.barcode_button = button(results, "ocr", self.tr("run_barcode")); self.barcode_button.clicked.connect(self.run_barcodes); right.addWidget(self.barcode_button); self.barcode_result = QTextEdit(self.tr("barcode_empty")); self.barcode_result.setReadOnly(True); self.bind_result_menu(self.barcode_result); right.addWidget(self.barcode_result, 1)
-        ai_heading = QHBoxLayout(); ai_heading.addWidget(QLabel(self.tr("ai"))); ai_heading.addWidget(self.help_button("barcode-ai", "ai")); ai_heading.addStretch(); right.addLayout(ai_heading); ai_bar = QHBoxLayout(); self.agent_select = QComboBox(); self.agent_select.currentIndexChanged.connect(self.agent_changed); self.ai_button = button(results, "ocr", self.tr("run_ai")); self.ai_button.clicked.connect(self.run_ai); ai_bar.addWidget(self.agent_select, 1); ai_bar.addWidget(self.ai_button); right.addLayout(ai_bar); self.ai_result = QTextEdit(self.tr("ai_empty")); self.ai_result.setReadOnly(True); self.bind_result_menu(self.ai_result); right.addWidget(self.ai_result, 1); split.addWidget(results); split.setSizes([1050, 450]); split.setStretchFactor(0, 7); split.setStretchFactor(1, 3); layout.addWidget(split); return page
+        results = QWidget(); right = QVBoxLayout(results); ocr_heading = QHBoxLayout(); ocr_heading.addWidget(QLabel(self.tr("ocr"))); ocr_heading.addWidget(self.help_button("ocr", "ocr")); ocr_heading.addStretch(); right.addLayout(ocr_heading); ocrbar = QHBoxLayout(); self.ocr_language = QComboBox(); self.ocr_language.addItem("English", "eng"); self.ocr_language.addItem("Українська", "ukr"); self.ocr_language.addItem("Polski", "pol"); ocrbar.addWidget(QLabel(self.tr("ocr_language"))); ocrbar.addWidget(self.ocr_language); self.ocr_button = button(results, "ocr", self.tr("run_ocr")); self.ocr_button.clicked.connect(self.run_ocr); ocrbar.addWidget(self.ocr_button); right.addLayout(ocrbar); self.ocr_result = QTextEdit(self.tr("ocr_empty")); self.ocr_result.setObjectName("recognitionResult"); self.bind_result_menu(self.ocr_result); right.addWidget(self.ocr_result, 1)
+        barcode_heading = QHBoxLayout(); barcode_heading.addWidget(QLabel(self.tr("barcodes"))); barcode_heading.addWidget(self.help_button("barcode-ai", "barcodes")); barcode_heading.addStretch(); right.addLayout(barcode_heading); self.barcode_button = button(results, "ocr", self.tr("run_barcode")); self.barcode_button.clicked.connect(self.run_barcodes); right.addWidget(self.barcode_button); self.barcode_result = QTextEdit(self.tr("barcode_empty")); self.barcode_result.setObjectName("recognitionResult"); self.barcode_result.setReadOnly(True); self.bind_result_menu(self.barcode_result); right.addWidget(self.barcode_result, 1)
+        ai_heading = QHBoxLayout(); ai_heading.addWidget(QLabel(self.tr("ai"))); ai_heading.addWidget(self.help_button("barcode-ai", "ai")); ai_heading.addStretch(); right.addLayout(ai_heading); ai_bar = QHBoxLayout(); self.agent_select = QComboBox(); self.agent_select.currentIndexChanged.connect(self.agent_changed); self.ai_button = button(results, "ocr", self.tr("run_ai")); self.ai_button.clicked.connect(self.run_ai); ai_bar.addWidget(self.agent_select, 1); ai_bar.addWidget(self.ai_button); right.addLayout(ai_bar); self.ai_result = QTextEdit(self.tr("ai_empty")); self.ai_result.setObjectName("recognitionResult"); self.ai_result.setReadOnly(True); self.bind_result_menu(self.ai_result); right.addWidget(self.ai_result, 1); split.addWidget(results); split.setSizes([1050, 450]); split.setStretchFactor(0, 7); split.setStretchFactor(1, 3); layout.addWidget(split); return page
 
     def camera_scan(self) -> QWidget:
         page = QWidget()
@@ -440,7 +483,7 @@ class MainWindow(QMainWindow):
     def camera_image_saved(self, _request_id: int, filename: str) -> None:
         path = Path(filename)
         try:
-            result = BarcodeRecognizer().recognize(path)
+            result = BarcodeRecognizer(self.tr("barcode_module_unavailable")).recognize(path)
             self.camera_result.setPlainText(result or self.tr("camera_result_empty"))
             self.camera_status.setText(self.tr("camera_ready"))
         except RuntimeError as error:
@@ -561,7 +604,7 @@ class MainWindow(QMainWindow):
         self.set_recognition_busy(True)
         self.ocr_result.setPlainText(self.tr("recognizing"))
         self.barcode_result.setPlainText(self.tr("recognizing"))
-        self.recognition_worker = RecognitionWorker(image_path, self.ocr_language.currentData(), self)
+        self.recognition_worker = RecognitionWorker(image_path, self.ocr_language.currentData(), self.tr("barcode_ocr_fallback"), self.tr("barcode_module_unavailable"), self)
         self.recognition_worker.completed.connect(lambda path, ocr_text, barcode_text, error, current=generation: self.recognition_finished(current, path, ocr_text, barcode_text, error))
         self.recognition_worker.start()
 
