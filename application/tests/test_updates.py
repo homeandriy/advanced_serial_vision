@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-from serial_vision.updates import ReleaseInfo, _download_asset, check_latest_release, create_update_log, download_linux_update, download_update, prune_update_logs
+from serial_vision.updates import ReleaseInfo, _download_asset, check_latest_release, create_update_log, download_linux_update, download_update, launch_update, prune_update_logs
 
 
 class _Response:
@@ -123,3 +123,18 @@ class UpdateTests(unittest.TestCase):
             self.assertIn("Update session started.", path.read_text(encoding="utf-8"))
             self.assertFalse(old.exists())
             prune_update_logs(logs)
+
+    @patch("serial_vision.updates.subprocess.Popen")
+    @patch("serial_vision.updates.sys")
+    def test_starts_visible_installer_without_locking_the_application_executable(self, mock_sys, popen) -> None:
+        mock_sys.platform = "win32"
+        mock_sys.frozen = True
+        installer = Path("C:/temporary/SerialVision-Setup-v0.6.2.exe")
+        log = Path("C:/temporary/update.log")
+
+        launch_update(installer, log)
+
+        popen.assert_called_once_with(
+            [str(installer), "/CLOSEAPPLICATIONS", "/NORESTART", f"/LOG={log}"],
+            close_fds=True,
+        )

@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 from PySide6.QtCore import QDate, QDateTime, QLocale, QSize, Qt, QTimer, QUrl, QThread, Signal
-from PySide6.QtGui import QAction, QDesktopServices, QIcon, QPixmap
+from PySide6.QtGui import QAction, QDesktopServices, QIcon, QPixmap, QTextCursor
 from PySide6.QtMultimedia import QCamera, QImageCapture, QMediaCaptureSession, QMediaDevices
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtCharts import QBarCategoryAxis, QBarSeries, QBarSet, QChart, QChartView, QValueAxis
@@ -335,23 +335,21 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.update_progress_bar)
         self.update_log_view = QTextEdit(self.update_progress)
         self.update_log_view.setReadOnly(True)
-        self.update_log_view.setVisible(False)
+        self.update_log_view.setMinimumHeight(120)
         layout.addWidget(self.update_log_view)
         actions = QHBoxLayout()
-        self.update_show_log = button(self.update_progress, "open", self.tr("show_update_log"))
-        self.update_show_log.clicked.connect(self.toggle_update_log)
         self.update_open_log = button(self.update_progress, "open", self.tr("open_update_log"))
         self.update_open_log.clicked.connect(self.open_update_log)
         self.update_close = button(self.update_progress, "close", self.tr("close"))
         self.update_close.setEnabled(False)
         self.update_close.clicked.connect(self.update_progress.reject)
-        actions.addWidget(self.update_show_log)
         actions.addWidget(self.update_open_log)
         actions.addStretch()
         actions.addWidget(self.update_close)
         layout.addLayout(actions)
         self.update_progress.setMinimumWidth(450)
-        self.update_progress.resize(560, 340)
+        self.update_progress.resize(560, 470)
+        self.refresh_update_log()
         self.update_progress.show()
         self.update_download_worker = UpdateDownloadWorker(release, target, self.update_log_path, self)
         self.update_download_worker.progress.connect(self.update_download_progress)
@@ -371,6 +369,8 @@ class MainWindow(QMainWindow):
 
     def update_download_phase(self, phase: str) -> None:
         if phase == "verifying":
+            write_update_log(self.update_log_path, "Download completed. Verifying SHA-256 digest.")
+            self.refresh_update_log()
             self.update_progress_bar.setValue(50)
             self.update_download_status.setText(self.tr("update_verifying"))
             self.set_update_step(0, "done")
@@ -381,15 +381,12 @@ class MainWindow(QMainWindow):
         self.update_steps[index].style().unpolish(self.update_steps[index])
         self.update_steps[index].style().polish(self.update_steps[index])
 
-    def toggle_update_log(self) -> None:
-        visible = not self.update_log_view.isVisible()
-        if visible:
-            try:
-                self.update_log_view.setPlainText(self.update_log_path.read_text(encoding="utf-8"))
-            except OSError as error:
-                self.update_log_view.setPlainText(str(error))
-        self.update_log_view.setVisible(visible)
-        self.update_show_log.setText(self.tr("hide_update_log") if visible else self.tr("show_update_log"))
+    def refresh_update_log(self) -> None:
+        try:
+            self.update_log_view.setPlainText(self.update_log_path.read_text(encoding="utf-8"))
+            self.update_log_view.moveCursor(QTextCursor.MoveOperation.End)
+        except OSError as error:
+            self.update_log_view.setPlainText(str(error))
 
     def open_update_log(self) -> None:
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.update_log_path))):
@@ -399,6 +396,7 @@ class MainWindow(QMainWindow):
         self.update_progress_bar.setValue(75)
         self.set_update_step(1, "done")
         write_update_log(self.update_log_path, f"Downloaded and verified asset: {installer_path}")
+        self.refresh_update_log()
         if self.update_download_target == "linux":
             if not QDesktopServices.openUrl(QUrl.fromLocalFile(installer_path)):
                 self.update_close.setEnabled(True)
@@ -407,6 +405,7 @@ class MainWindow(QMainWindow):
             self.update_progress_bar.setValue(100)
             self.set_update_step(2, "done")
             write_update_log(self.update_log_path, "Linux package opened in the system installer.")
+            self.refresh_update_log()
             self.update_progress.accept()
             QMessageBox.information(self, self.tr("help"), self.tr("linux_update_ready", path=installer_path))
             return
@@ -414,17 +413,18 @@ class MainWindow(QMainWindow):
             self.set_update_step(2, "active")
             self.update_progress_bar.setValue(100)
             self.update_download_status.setText(self.tr("update_closing_application"))
-            write_update_log(self.update_log_path, "Starting updater helper and closing application.")
-            launch_update(Path(installer_path), os.getpid(), sys.executable, self.update_log_path)
+            write_update_log(self.update_log_path, "Starting visible installer directly; application will now close.")
+            self.refresh_update_log()
+            launch_update(Path(installer_path), self.update_log_path)
         except RuntimeError as error:
             self.update_close.setEnabled(True)
             write_update_log(self.update_log_path, f"Could not start updater helper: {error}")
             QMessageBox.warning(self, self.tr("error"), self.tr(str(error)))
             return
-        QTimer.singleShot(700, self.finish_windows_update)
+        QTimer.singleShot(1_000, self.finish_windows_update)
 
     def finish_windows_update(self) -> None:
-        self.service.log_startup(f"Starting verified update installer: {self.update_log_path}")
+        self.service.log_startup("Visible update installer started; closing application for file replacement.")
         self.close()
         QApplication.quit()
 

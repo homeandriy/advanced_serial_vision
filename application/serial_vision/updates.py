@@ -77,35 +77,13 @@ def download_linux_update(release: ReleaseInfo, progress_callback: ProgressCallb
     return _download_package(release.linux_package_url, release.linux_package_sha256 or "", destination_directory, progress_callback, phase_callback)
 
 
-def launch_update(installer_path: Path, parent_pid: int, application_path: str, log_path: Path) -> None:
+def launch_update(installer_path: Path, log_path: Path) -> None:
     if sys.platform != "win32" or not getattr(sys, "frozen", False):
         raise RuntimeError("automatic_update_unsupported")
     subprocess.Popen(
-        [sys.executable, "--apply-update", str(installer_path), str(parent_pid), application_path, str(log_path)],
+        [str(installer_path), "/CLOSEAPPLICATIONS", "/NORESTART", f"/LOG={log_path}"],
         close_fds=True,
     )
-
-
-def apply_update(installer_path: str, parent_pid: int, application_path: str, log_path: str) -> int:
-    log = Path(log_path)
-    if sys.platform != "win32" or not Path(installer_path).is_file():
-        write_update_log(log, "Updater stopped: unsupported platform or installer is missing.")
-        return 1
-    write_update_log(log, f"Updater started for installer: {installer_path}")
-    _wait_for_process(parent_pid)
-    write_update_log(log, "Application closed. Starting visible installer.")
-    try:
-        installer = subprocess.Popen([installer_path, "/CLOSEAPPLICATIONS", "/NORESTART"], close_fds=True)
-    except OSError as error:
-        write_update_log(log, f"Could not start installer: {error}")
-        return 1
-    exit_code = installer.wait()
-    write_update_log(log, f"Installer finished with exit code {exit_code}.")
-    if exit_code != 0:
-        return 1
-    write_update_log(log, "Starting updated application.")
-    subprocess.Popen([application_path], close_fds=True)
-    return 0
 
 
 def _download_installer(url: str, expected_sha256: str, progress_callback: ProgressCallback | None = None, phase_callback: PhaseCallback | None = None) -> Path:
@@ -181,20 +159,6 @@ def _asset_digest(asset: object | None) -> str | None:
         return None
     digest = str(asset.get("digest", ""))
     return digest.removeprefix("sha256:") if digest.startswith("sha256:") else None
-
-
-def _wait_for_process(process_id: int) -> None:
-    if process_id <= 0:
-        return
-    import ctypes
-
-    synchronize = 0x00100000
-    handle = ctypes.windll.kernel32.OpenProcess(synchronize, False, process_id)
-    if handle:
-        try:
-            ctypes.windll.kernel32.WaitForSingleObject(handle, 120_000)
-        finally:
-            ctypes.windll.kernel32.CloseHandle(handle)
 
 
 def _is_newer(candidate: str, current: str) -> bool:

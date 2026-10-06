@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## v0.6.2 - 2026-10-07
+
+### Changed
+
+- The verified Windows installer is now started directly before the application exits, so no second `SerialVision.exe` process holds the installed executable open during file replacement.
+- The update log is permanently visible below the determinate progress bar and is refreshed through download verification and installer launch. Inno Setup writes its own installation log to the same file.
+
+### Fixed
+
+- Windows automatic installation no longer relies on the self-hosted updater helper that prevented the installer from replacing the running executable.
+
 ## v0.6.1 - 2026-10-06
 
 ### Changed
