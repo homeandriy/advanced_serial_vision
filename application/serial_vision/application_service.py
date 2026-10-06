@@ -82,6 +82,9 @@ class SerialVisionService:
     def startup_log_path(self) -> Path:
         return self._database.path.parent / "startup.log"
 
+    def app_data_directory(self) -> Path:
+        return self._database.path.parent
+
     def log_startup(self, message: str) -> OSError | None:
         try:
             with self.startup_log_path().open("a", encoding="utf-8") as log:

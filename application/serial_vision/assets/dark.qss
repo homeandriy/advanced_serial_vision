@@ -1,6 +1,8 @@
 QWidget { background: #2b2b2b; color: #e8e8e8; }
 QLineEdit, QTextEdit, QComboBox, QTableWidget, QDateEdit, QDateTimeEdit { background: #333333; color: #eeeeee; border: 1px solid #545454; border-radius: 3px; padding: 3px; }
 QTextEdit#recognitionResult { font-size: 16px; }
+QLabel#updateStepActive { font-weight: bold; color: #8ee6ae; }
+QLabel#updateStepDone { color: #a1bca8; }
 QPushButton { background: #3b3b3b; border: 1px solid #555555; border-radius: 3px; padding: 5px 8px; }
 QPushButton:hover { background: #4b4b4b; }
 QHeaderView::section { background: #3b3b3b; color: #eeeeee; padding: 4px; border: 1px solid #555555; }

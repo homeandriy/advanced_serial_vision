@@ -20,10 +20,10 @@ def main() -> int:
     if "--apply-update" in sys.argv:
         index = sys.argv.index("--apply-update")
         try:
-            installer_path, parent_pid, application_path = sys.argv[index + 1:index + 4]
+            installer_path, parent_pid, application_path, log_path = sys.argv[index + 1:index + 5]
         except ValueError:
             return 1
-        return apply_update(installer_path, int(parent_pid), application_path)
+        return apply_update(installer_path, int(parent_pid), application_path, log_path)
     app = QApplication(sys.argv)
     app.setApplicationName("Advanced Serial Vision")
     app.setOrganizationName("homeandriy")

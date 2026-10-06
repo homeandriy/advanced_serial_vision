@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## v0.6.1 - 2026-10-06
+
+### Changed
+
+- The Windows update flow now shows the download URL, three explicit stages, true download progress, and an optional update log instead of an indefinite busy indicator.
+- The verified Windows installer opens visibly after the application closes, rather than installing silently in the background.
+
+### Fixed
+
+- Update logs older than five days are removed automatically.
+- The photo-catalog and preview panes can be fully resized with their vertical splitter.
+- The About window is wider, has a cleaner status-bar presentation, and links to the Webbooks portfolio with UTM parameters.
+
 ## v0.6.0 - 2026-10-06
 
 ### Added

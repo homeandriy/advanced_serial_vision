@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-from serial_vision.updates import ReleaseInfo, check_latest_release, download_linux_update, download_update
+from serial_vision.updates import ReleaseInfo, _download_asset, check_latest_release, create_update_log, download_linux_update, download_update, prune_update_logs
 
 
 class _Response:
@@ -20,6 +22,22 @@ class _Response:
 
     def read(self) -> bytes:
         return json.dumps(self.payload).encode("utf-8")
+
+
+class _DownloadResponse:
+    headers = {"Content-Length": "6"}
+
+    def __init__(self) -> None:
+        self.chunks = iter((b"abc", b"def", b""))
+
+    def __enter__(self) -> "_DownloadResponse":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def read(self, _size: int) -> bytes:
+        return next(self.chunks)
 
 
 class UpdateTests(unittest.TestCase):
@@ -77,3 +95,31 @@ class UpdateTests(unittest.TestCase):
         urlopen.return_value = _Response({"tag_name": "v0.2.0", "assets": []})
 
         self.assertIsNone(check_latest_release("homeandriy/advanced_serial_vision", "0.2.0"))
+
+    @patch("serial_vision.updates.urllib.request.urlopen")
+    def test_reports_asset_download_progress_and_verification(self, urlopen) -> None:
+        urlopen.return_value = _DownloadResponse()
+        progress: list[tuple[int, int | None, str]] = []
+        phases: list[str] = []
+        with TemporaryDirectory() as directory:
+            path = _download_asset("https://example.test/update.exe", "bef57ec7f53a6d40beb640a780a639c83bc29ac8a9816f1fc6c5c6dcd93c4721", Path(directory), lambda downloaded, total, url: progress.append((downloaded, total, url)), phases.append)
+            self.assertEqual(b"abcdef", path.read_bytes())
+
+        self.assertEqual([(3, 6, "https://example.test/update.exe"), (6, 6, "https://example.test/update.exe")], progress)
+        self.assertEqual(["verifying"], phases)
+
+    def test_update_logs_are_created_and_old_logs_are_pruned(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            logs = root / "update-logs"
+            logs.mkdir()
+            old = logs / "old.log"
+            old.write_text("old", encoding="utf-8")
+            os.utime(old, (0, 0))
+
+            path = create_update_log(root)
+
+            self.assertTrue(path.is_file())
+            self.assertIn("Update session started.", path.read_text(encoding="utf-8"))
+            self.assertFalse(old.exists())
+            prune_update_logs(logs)
