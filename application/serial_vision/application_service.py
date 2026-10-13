@@ -14,6 +14,7 @@ from serial_vision.database import Database
 from serial_vision.i18n import system_locale
 from serial_vision.model_import import read_models_xlsx
 from serial_vision.ai_vision import AiVisionRecognizer
+from serial_vision.recognition_strategies import RecognitionOptions
 
 
 class SerialVisionService:
@@ -33,6 +34,30 @@ class SerialVisionService:
 
     def update_repository(self) -> str:
         return "homeandriy/advanced_serial_vision"
+
+    def recognition_options(self) -> RecognitionOptions:
+        return RecognitionOptions(
+            rotate=self._database.setting("recognition_rotate", "yes") == "yes",
+            enhance=self._database.setting("recognition_enhance", "yes") == "yes",
+        )
+
+    def save_recognition_options(self, options: RecognitionOptions) -> None:
+        self._database.set_setting("recognition_rotate", "yes" if options.rotate else "no")
+        self._database.set_setting("recognition_enhance", "yes" if options.enhance else "no")
+
+    def splitter_state(self, name: str) -> bytes | None:
+        if name not in {"recognition_horizontal", "recognition_vertical"}:
+            raise ValueError("Unknown splitter")
+        value = self._database.setting(f"ui_{name}_splitter", "")
+        try:
+            return bytes.fromhex(value) if value else None
+        except ValueError:
+            return None
+
+    def save_splitter_state(self, name: str, state: bytes) -> None:
+        if name not in {"recognition_horizontal", "recognition_vertical"}:
+            raise ValueError("Unknown splitter")
+        self._database.set_setting(f"ui_{name}_splitter", state.hex())
 
     def theme(self) -> str:
         return self._database.setting("theme", "system")

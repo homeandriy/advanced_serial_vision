@@ -37,6 +37,16 @@ BUTTONS: dict[str, QStyle.StandardPixmap] = {
     "stop": QStyle.StandardPixmap.SP_MediaStop,
     "api_example": QStyle.StandardPixmap.SP_DialogHelpButton,
     "copy_record": QStyle.StandardPixmap.SP_FileDialogNewFolder,
+    "fit_image": QStyle.StandardPixmap.SP_TitleBarMaxButton,
+    "actual_size": QStyle.StandardPixmap.SP_TitleBarNormalButton,
+    "retry": QStyle.StandardPixmap.SP_BrowserReload,
+    "cancel": QStyle.StandardPixmap.SP_DialogCancelButton,
+    "actions": QStyle.StandardPixmap.SP_FileDialogListView,
+    "editor": QStyle.StandardPixmap.SP_FileDialogDetailedView,
+    "crop": QStyle.StandardPixmap.SP_DialogApplyButton,
+    "resize": QStyle.StandardPixmap.SP_TitleBarMaxButton,
+    "reset": QStyle.StandardPixmap.SP_BrowserReload,
+    "recognize": QStyle.StandardPixmap.SP_FileDialogContentsView,
 }
 
 

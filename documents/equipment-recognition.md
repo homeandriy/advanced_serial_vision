@@ -15,9 +15,8 @@ model in v0.1.0; the Windows user who launches it is the operator.
 
 ## Flow and state changes
 
-1. The operator selects a photo from its dated preview card. OCR and barcode recognition start automatically; their result fields stay locked until the processing finishes. Barcode recognition checks the original frame plus enlarged grayscale and high-contrast variants. When a blurred Code 128 cannot be decoded directly, the barcode panel also identifies serial/MAC-like values read from its printed label as `Label text (OCR)`. The source photo remains unchanged.
-2. OCR creates temporary processed variants only; they are removed when recognition
-   completes.
+1. The operator selects a photo from its dated preview card. OCR and barcode recognition start automatically; their result fields stay locked until the processing finishes. The original photo is processed first with the previous decoder. If it yields no barcode, enabled fallback strategies try right-angle rotations and then moderate contrast/sharpness enhancement. OCR keeps a sufficiently clear original result; weak results are compared with the enabled temporary variants using label and code evidence. A barcode result from the original photo takes priority over processed candidates. When a blurred Code 128 cannot be decoded directly, the barcode panel also identifies serial/MAC-like values read from its printed label as `Label text (OCR)`. The source photo remains unchanged.
+2. Settings has two independent checkboxes for automatic right-angle rotations and enhancement of low-contrast or soft photos. Both are enabled by default; disabling both restores original-only recognition. OCR and barcode processing create temporary in-memory variants only. Strong perspective distortion, clipped bars, and true motion blur can destroy information that processing cannot recover; operators must still verify values or retake photos.
 3. The operator can generate a QR code or a Code 128 barcode from the current serial/MAC/text field before saving, or from the compact QR/barcode actions of an existing equipment row. Preview titles identify the code value; barcode titles also identify the Code 128 technology. The preview may be saved as a PNG named `qrcode_<sanitized-code>_<H_M_d_m_Y>.png` or `barcode_<sanitized-code>_<H_M_d_m_Y>.png`; generating or saving a code never changes the equipment record.
 4. The operator corrects text, selects a model and saves a new equipment record.
 5. The SQLite transaction stores the immutable source-photo path reference and the
@@ -35,6 +34,39 @@ model in v0.1.0; the Windows user who launches it is the operator.
    service. The models table shows each model usage count and supports sorting by
    name and numeric usage count. A model still cannot be deleted while equipment
    records reference it. The operator can import models from an XLSX worksheet named Models or Моделі with name, device_type and service columns. Only modem/tuner and internet/television are accepted; malformed rows are skipped and duplicate combinations remain unchanged.
+11. Selecting a photo runs local OCR and barcode recognition together. A single Retry
+   recognition action repeats both stages; the UI names the current stage and offers
+   cooperative cancellation, without implying that an in-progress OCR library call
+   can be terminated instantly. The source image and equipment records are never
+   changed by retrying or cancelling recognition.
+12. The photo preview toolbar groups Open image, Photo editor and Rotate clockwise
+   beside the selected photo, with Fit and 100% controls aligned at the far end.
+   The photo preview offers wheel zoom. Fit recalculates on
+   panel resize, and both splitters retain their sizes in per-user settings. Dated
+   photo cards adapt their column count to the available width. Refresh preserves
+   visible selection; moving to a page without the selected photo clears the
+   selection and old recognition results, so destructive actions cannot target a
+   hidden photo.
+13. Equipment filters have visible labels and wrap into a compact grid. Edit remains
+   the prominent row action; source image, generated codes and Delete are in a
+   secondary actions menu with Delete separated from ordinary actions. Settings
+   use one Save action and a visible unsaved-changes state for interface, folder,
+   appearance, recognition and local API options. Validation runs before saving.
+14. The operator may open the selected photo in a separate, non-destructive image
+   editor. A drag rectangle or numeric coordinates select a crop. The selected
+   rectangle has eight drag handles for resizing from edges or corners and can
+   be moved inside the photo; its numeric X, Y, width and height fields update
+   with each adjustment and remain available for keyboard-only editing. A handle
+   above the photo rotates the whole working image to an arbitrary angle with a
+   live preview; entering degrees and applying them is the keyboard alternative.
+   Rotation clears the crop rectangle because the image coordinates change.
+   Rotation, resize and optional brightness, contrast, color and sharpness adjustments affect only
+   the editor's in-memory working image. Reset restores the source. Recognize
+   exports a temporary snapshot and runs local OCR and barcode recognition into
+   separate result fields. A third field runs AI only if the operator explicitly
+   chooses an AI profile before pressing Recognize; choosing no profile never
+   makes a network request. The snapshot and source image are not registered as
+   equipment and the source file is never overwritten.
 
 ## Validation and guards
 
@@ -62,12 +94,13 @@ The image area shows paged preview cards grouped by photo date. The operator see
 the selected photo and editable OCR text, receives clear errors when OCR or a
 directory is unavailable, and can subsequently find the record through the
 equipment filters and statistics screen. The application menu provides File,
-Edit, View and Help actions. Settings are grouped into independently saved
-interface, appearance, image-folder and AI-profile blocks. The update source is not displayed or editable.
+Edit, View and Help actions. Settings retain grouped sections but save their
+editable options together; AI-profile CRUD remains a separate immediate action.
+The update source is not displayed or editable.
 
 ## Local diagnostics and updates
 
-Advanced Serial Vision uses its own per-user application-data directory under the `homeandriy` organization, separate from the previous application. Startup attempts to write timestamped records to `startup.log` in that directory. If the OS denies access, startup continues without writing the log, retries once after the window appears, and shows the operator a modal message with the exact log folder and OS error. The Help menu can open that file when available. The fixed official GitHub repository is checked in a worker thread one minute after startup and on demand. When a newer release exists, the operator sees a dialog with the release changelog and may install it now or choose Later; choosing Later makes no download or installation. The update progress window displays the source URL, three steps and a real 0–50% download progress value, then preparation/verification through 75% and application hand-off at 100%. Its technical log is always visible below the progress bar and can also be opened as a file; update logs older than five days are removed. On Windows, the installed EXE offers Download and install. The newer EXE is downloaded to a temporary folder and verified against its SHA-256 release digest while the application remains open. Only after successful verification does the application start the visible Inno Setup installer with its log directed to the update-log file, then exits so the installer can replace its executable without a process lock. The installer launches the installed application at the end of a completed interactive installation. A per-user lock prevents a second application window from starting while an instance is active. The installer uses the stable AppId and does not touch per-user SQLite data. On the next start, forward-only SQLite migrations are applied transactionally using PRAGMA user_version; migrations never delete or recreate the database. On Ubuntu and other supported Linux desktops, the dialog offers Download DEB. The checked DEB file is saved to the user's Downloads directory when available and opened in the OS package installer; that installer requests privileges and handles any need to close the application. Other platforms can open the published release page.
+Advanced Serial Vision uses its own per-user application-data directory under the `homeandriy` organization, separate from the previous application. Startup attempts to write timestamped records to `startup.log` in that directory. If the OS denies access, startup continues without writing the log, retries once after the window appears, and shows the operator a modal message with the exact log folder and OS error. The Help menu can open that file when available. The fixed official GitHub repository is checked in a worker thread one minute after startup, every four hours while the application remains open, and on demand. When a newer release exists, the operator sees a dialog with the release changelog and may install it now or choose Later; choosing Later makes no download or installation and suppresses repeated automatic prompts for that version during the current session. A manual check can still show the release. The update progress window displays the source URL, three steps and a real 0–50% download progress value, then preparation/verification through 75% and application hand-off at 100%. Its technical log is always visible below the progress bar and can also be opened as a file; update logs older than five days are removed. On Windows, the installed EXE offers Download and install. The newer EXE is downloaded to a temporary folder and verified against its SHA-256 release digest while the application remains open. Only after successful verification does the application start the visible Inno Setup installer with its log directed to the update-log file, then exits so the installer can replace its executable without a process lock. The installer launches the installed application at the end of a completed interactive installation. A per-user lock prevents a second application window from starting while an instance is active. The installer uses the stable AppId and does not touch per-user SQLite data. On the next start, forward-only SQLite migrations are applied transactionally using PRAGMA user_version; migrations never delete or recreate the database. On Ubuntu and other supported Linux desktops, the dialog offers Download DEB. The checked DEB file is saved to the user's Downloads directory when available and opened in the OS package installer; that installer requests privileges and handles any need to close the application. Other platforms can open the published release page.
 Packaged builds carry `VERSION` inside the bundle and never rely on their current working directory to show the installed version or check updates.
 
 ## Scalability and statistics

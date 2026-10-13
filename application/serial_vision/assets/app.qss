@@ -1,5 +1,18 @@
-QLabel#imagePreview {
+QGraphicsView#imagePreview, QGraphicsView#imageEditorPreview {
     border: 1px solid palette(mid);
+}
+
+QSlider#imageAdjustmentSlider::groove:horizontal {
+    height: 6px;
+    background: palette(mid);
+    border-radius: 3px;
+}
+QSlider#imageAdjustmentSlider::handle:horizontal {
+    width: 16px;
+    margin: -6px 0;
+    background: palette(highlight);
+    border: 2px solid palette(base);
+    border-radius: 8px;
 }
 
 QTabBar::tab { min-height: 32px; min-width: 135px; padding: 8px 14px; }

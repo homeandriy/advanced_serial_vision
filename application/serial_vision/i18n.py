@@ -142,6 +142,120 @@ TEXT["pl"].update({"update_progress_title": "Aktualizacja v{version}", "update_s
 TEXT["uk"]["barcode_ocr_fallback"] = "Текст етикетки (OCR)"
 TEXT["en"]["barcode_ocr_fallback"] = "Label text (OCR)"
 TEXT["pl"]["barcode_ocr_fallback"] = "Tekst etykiety (OCR)"
+
+TEXT["uk"].update({"recognition_strategies": "Стратегії розпізнавання", "recognition_original_info": "Оригінальне фото (старий алгоритм) перевіряється завжди першим.", "recognition_rotate": "Автоматично перевіряти повороти 90°, 180° і 270°", "recognition_enhance": "Додатково обробляти розмиті та слабоконтрастні фото", "save_recognition_strategies": "Зберегти стратегії"})
+TEXT["en"].update({"recognition_strategies": "Recognition strategies", "recognition_original_info": "The original photo (previous algorithm) is always checked first.", "recognition_rotate": "Automatically try 90°, 180° and 270° rotations", "recognition_enhance": "Also process blurred and low-contrast photos", "save_recognition_strategies": "Save strategies"})
+TEXT["pl"].update({"recognition_strategies": "Strategie rozpoznawania", "recognition_original_info": "Oryginalne zdjęcie (poprzedni algorytm) jest zawsze sprawdzane jako pierwsze.", "recognition_rotate": "Automatycznie sprawdzaj obroty 90°, 180° i 270°", "recognition_enhance": "Dodatkowo przetwarzaj rozmyte zdjęcia o niskim kontraście", "save_recognition_strategies": "Zapisz strategie"})
 TEXT["uk"]["barcode_module_unavailable"] = "Модуль розпізнавання штрихкодів не встановлено."
 TEXT["en"]["barcode_module_unavailable"] = "The barcode recognition module is not installed."
 TEXT["pl"]["barcode_module_unavailable"] = "Moduł rozpoznawania kodów kreskowych nie jest zainstalowany."
+
+TEXT["uk"].update({
+    "fit_image": "Вмістити", "actual_size": "100%", "image_preview": "Перегляд вибраного фото",
+    "preview_zoom_hint": "Прокручуйте коліщатко над фото для зміни масштабу; перетягуйте фото для огляду.",
+    "retry_recognition": "Розпізнати повторно", "cancel_recognition": "Скасувати",
+    "recognition_ready": "Оберіть фото для розпізнавання.",
+    "recognition_step_ocr": "Крок 1/2: розпізнавання тексту OCR…",
+    "recognition_step_barcode": "Крок 2/2: читання штрихкодів…",
+    "recognition_cancelling": "Скасування після завершення поточного етапу…",
+    "recognition_cancelled": "Розпізнавання скасовано.",
+    "recognition_finished": "Розпізнавання завершено.",
+    "date_from_label": "Дата від", "date_to_label": "Дата до",
+    "save_settings": "Зберегти налаштування", "settings_unsaved": "Є незбережені зміни.",
+})
+TEXT["en"].update({
+    "fit_image": "Fit", "actual_size": "100%", "image_preview": "Selected photo preview",
+    "preview_zoom_hint": "Use the mouse wheel over the photo to zoom; drag the photo to pan.",
+    "retry_recognition": "Recognize again", "cancel_recognition": "Cancel",
+    "recognition_ready": "Select a photo to recognize.",
+    "recognition_step_ocr": "Step 1/2: recognizing text with OCR…",
+    "recognition_step_barcode": "Step 2/2: reading barcodes…",
+    "recognition_cancelling": "Stopping after the current stage finishes…",
+    "recognition_cancelled": "Recognition cancelled.",
+    "recognition_finished": "Recognition complete.",
+    "date_from_label": "Date from", "date_to_label": "Date to",
+    "save_settings": "Save settings", "settings_unsaved": "You have unsaved changes.",
+})
+TEXT["pl"].update({
+    "fit_image": "Dopasuj", "actual_size": "100%", "image_preview": "Podgląd wybranego zdjęcia",
+    "preview_zoom_hint": "Użyj kółka myszy nad zdjęciem, aby zmienić skalę; przeciągnij zdjęcie, aby je przesunąć.",
+    "retry_recognition": "Rozpoznaj ponownie", "cancel_recognition": "Anuluj",
+    "recognition_ready": "Wybierz zdjęcie do rozpoznania.",
+    "recognition_step_ocr": "Krok 1/2: rozpoznawanie tekstu OCR…",
+    "recognition_step_barcode": "Krok 2/2: odczytywanie kodów kreskowych…",
+    "recognition_cancelling": "Zatrzymywanie po zakończeniu bieżącego etapu…",
+    "recognition_cancelled": "Rozpoznawanie anulowano.",
+    "recognition_finished": "Rozpoznawanie zakończone.",
+    "date_from_label": "Data od", "date_to_label": "Data do",
+    "save_settings": "Zapisz ustawienia", "settings_unsaved": "Masz niezapisane zmiany.",
+})
+
+TEXT["uk"].update({
+    "editor": "Редактор фото", "image_editor_title": "Редактор фото для розпізнавання",
+    "editor_reset": "Скинути правки", "editor_crop": "Обрізання",
+    "editor_x": "X", "editor_y": "Y", "editor_width": "Ширина", "editor_height": "Висота",
+    "editor_apply_crop": "Обрізати", "editor_crop_invalid": "Перевірте координати: область має бути всередині фото й не меншою за 2 × 2 пікселі.",
+    "editor_resize_percent": "Масштаб зображення", "editor_apply_resize": "Змінити розмір",
+    "editor_resize_invalid": "Після зміни розміру зображення завелике. Зменште відсоток або спершу обріжте фото.",
+    "editor_rotation_angle": "Кут повороту", "editor_apply_rotation": "Повернути на кут",
+    "editor_rotation_invalid": "Фото після повороту завелике. Спершу зменште його розмір.",
+    "editor_advanced": "Додаткові налаштування", "editor_brightness": "Яскравість",
+    "editor_contrast": "Контрастність", "editor_color": "Насиченість кольору",
+    "editor_sharpness": "Різкість", "editor_crop_preview": "Фото з областю обрізання",
+    "editor_crop_hint": "Протягніть мишею для виділення. Тягніть краї чи кути рамки, щоб змінити розмір, або всередині рамки, щоб перемістити її. Точка над фото повертає весь кадр. Для точності введіть X, Y, ширину й висоту вручну.",
+    "editor_dimensions": "Розмір робочого фото: {width} × {height} пікселів. Оригінал не змінюється.",
+    "editor_ai_profile": "AI-профіль", "editor_no_ai": "Без AI (локально)",
+    "editor_ai_not_selected": "AI не вибрано — фото не надсилається в мережу.",
+    "editor_ai_waiting": "AI запуститься після локального розпізнавання…",
+    "editor_stage_ocr_ai": "Крок 1/3: розпізнавання тексту OCR…", "editor_stage_barcode_ai": "Крок 2/3: читання штрихкодів…",
+    "editor_ai_stage": "Крок 3/3: AI-розпізнавання…", "editor_ai_failed": "AI-розпізнавання не вдалося; локальні результати збережено.",
+    "editor_recognize": "Розпізнати", "editor_ready": "Оберіть область та налаштуйте фото, потім натисніть «Розпізнати».",
+    "editor_preview_failed": "Не вдалося показати попередній перегляд.",
+    "editor_snapshot_failed": "Не вдалося підготувати фото для розпізнавання: {error}",
+})
+TEXT["en"].update({
+    "editor": "Photo editor", "image_editor_title": "Photo editor for recognition",
+    "editor_reset": "Reset edits", "editor_crop": "Crop",
+    "editor_x": "X", "editor_y": "Y", "editor_width": "Width", "editor_height": "Height",
+    "editor_apply_crop": "Crop", "editor_crop_invalid": "Check the coordinates: the region must be inside the photo and at least 2 × 2 pixels.",
+    "editor_resize_percent": "Image scale", "editor_apply_resize": "Resize",
+    "editor_resize_invalid": "The resized image would be too large. Lower the percentage or crop it first.",
+    "editor_rotation_angle": "Rotation angle", "editor_apply_rotation": "Rotate by angle",
+    "editor_rotation_invalid": "The rotated photo would be too large. Resize it smaller first.",
+    "editor_advanced": "Advanced adjustments", "editor_brightness": "Brightness",
+    "editor_contrast": "Contrast", "editor_color": "Color saturation",
+    "editor_sharpness": "Sharpness", "editor_crop_preview": "Photo with crop selection",
+    "editor_crop_hint": "Drag to select a region. Drag its edges or corners to resize it, or drag inside to move it. The dot above the photo rotates the entire image. For precision, enter X, Y, width and height manually.",
+    "editor_dimensions": "Working photo: {width} × {height} pixels. The original is unchanged.",
+    "editor_ai_profile": "AI profile", "editor_no_ai": "No AI (local only)",
+    "editor_ai_not_selected": "AI is not selected — the photo is not sent online.",
+    "editor_ai_waiting": "AI will start after local recognition…",
+    "editor_stage_ocr_ai": "Step 1/3: recognizing text with OCR…", "editor_stage_barcode_ai": "Step 2/3: reading barcodes…",
+    "editor_ai_stage": "Step 3/3: AI recognition…", "editor_ai_failed": "AI recognition failed; local results are preserved.",
+    "editor_recognize": "Recognize", "editor_ready": "Choose a region and adjust the photo, then select Recognize.",
+    "editor_preview_failed": "The preview could not be displayed.",
+    "editor_snapshot_failed": "Could not prepare the photo for recognition: {error}",
+})
+TEXT["pl"].update({
+    "editor": "Edytor zdjęć", "image_editor_title": "Edytor zdjęć do rozpoznawania",
+    "editor_reset": "Cofnij zmiany", "editor_crop": "Kadrowanie",
+    "editor_x": "X", "editor_y": "Y", "editor_width": "Szerokość", "editor_height": "Wysokość",
+    "editor_apply_crop": "Przytnij", "editor_crop_invalid": "Sprawdź współrzędne: obszar musi mieścić się w zdjęciu i mieć co najmniej 2 × 2 piksele.",
+    "editor_resize_percent": "Skala obrazu", "editor_apply_resize": "Zmień rozmiar",
+    "editor_resize_invalid": "Obraz po zmianie rozmiaru byłby zbyt duży. Zmniejsz procent lub najpierw go przytnij.",
+    "editor_rotation_angle": "Kąt obrotu", "editor_apply_rotation": "Obróć o kąt",
+    "editor_rotation_invalid": "Zdjęcie po obrocie byłoby zbyt duże. Najpierw zmniejsz jego rozmiar.",
+    "editor_advanced": "Ustawienia zaawansowane", "editor_brightness": "Jasność",
+    "editor_contrast": "Kontrast", "editor_color": "Nasycenie kolorów",
+    "editor_sharpness": "Ostrość", "editor_crop_preview": "Zdjęcie z zaznaczeniem kadrowania",
+    "editor_crop_hint": "Przeciągnij, aby zaznaczyć obszar. Przeciągaj krawędzie lub narożniki ramki, aby zmienić jej rozmiar, albo wnętrze, aby ją przesunąć. Punkt nad zdjęciem obraca cały obraz. Dla precyzji wpisz ręcznie X, Y, szerokość i wysokość.",
+    "editor_dimensions": "Rozmiar roboczy: {width} × {height} pikseli. Oryginał pozostaje bez zmian.",
+    "editor_ai_profile": "Profil AI", "editor_no_ai": "Bez AI (tylko lokalnie)",
+    "editor_ai_not_selected": "Nie wybrano AI — zdjęcie nie jest wysyłane do sieci.",
+    "editor_ai_waiting": "AI uruchomi się po lokalnym rozpoznawaniu…",
+    "editor_stage_ocr_ai": "Krok 1/3: rozpoznawanie tekstu OCR…", "editor_stage_barcode_ai": "Krok 2/3: odczytywanie kodów kreskowych…",
+    "editor_ai_stage": "Krok 3/3: rozpoznawanie AI…", "editor_ai_failed": "Rozpoznawanie AI nie powiodło się; wyniki lokalne zachowano.",
+    "editor_recognize": "Rozpoznaj", "editor_ready": "Wybierz obszar i dostosuj zdjęcie, a następnie naciśnij Rozpoznaj.",
+    "editor_preview_failed": "Nie można wyświetlić podglądu.",
+    "editor_snapshot_failed": "Nie można przygotować zdjęcia do rozpoznawania: {error}",
+})

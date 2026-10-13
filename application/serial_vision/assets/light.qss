@@ -1,10 +1,16 @@
 QWidget { background: #f7f8fa; color: #202124; }
-QLineEdit, QTextEdit, QComboBox, QTableWidget, QDateEdit, QDateTimeEdit { background: #ffffff; color: #202124; border: 1px solid #b8c0cc; border-radius: 3px; padding: 3px; }
+QLineEdit, QTextEdit, QComboBox, QSpinBox, QTableWidget, QDateEdit, QDateTimeEdit { background: #ffffff; color: #202124; border: 1px solid #b8c0cc; border-radius: 3px; padding: 3px; }
 QTextEdit#recognitionResult { font-size: 16px; }
 QLabel#updateStepActive { font-weight: bold; color: #135e32; }
 QLabel#updateStepDone { color: #4d6b57; }
 QPushButton { background: #eef2f7; border: 1px solid #aeb9c8; border-radius: 3px; padding: 5px 8px; }
 QPushButton:hover { background: #dfe8f5; }
+QPushButton:pressed, QToolButton:pressed { background: #cbdcf0; }
+QPushButton:disabled, QToolButton:disabled { color: #66717d; background: #e6e9ee; border-color: #c9d0d9; }
+QPushButton:focus, QToolButton:focus, QLineEdit:focus, QTextEdit:focus, QComboBox:focus, QSpinBox:focus, QDateEdit:focus, QTableWidget:focus { border: 2px solid #1769aa; }
+QToolButton:checked { background: #d7e9fb; border: 2px solid #1769aa; }
+QLabel#settingsStatus[state="dirty"] { color: #8a4c08; font-weight: bold; }
+QLabel#recognitionStatus { color: #334960; }
 QHeaderView::section { background: #e5eaf1; color: #202124; padding: 4px; border: 1px solid #b8c0cc; }
 QTabBar::tab { background: #e8edf3; color: #202124; padding: 6px 10px; }
 QTabBar::tab:selected { background: #ffffff; }

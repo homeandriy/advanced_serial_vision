@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 import tempfile
 import os
 from pathlib import Path
 import subprocess
 import sys
-from PySide6.QtCore import QDate, QDateTime, QLocale, QSize, Qt, QTimer, QUrl, QThread, Signal
+from PySide6.QtCore import QByteArray, QDate, QDateTime, QEvent, QLocale, QSize, Qt, QTimer, QUrl, QThread, Signal
 from PySide6.QtGui import QAction, QDesktopServices, QIcon, QPixmap, QTextCursor
 from PySide6.QtMultimedia import QCamera, QImageCapture, QMediaCaptureSession, QMediaDevices
 from PySide6.QtMultimediaWidgets import QVideoWidget
@@ -18,8 +19,11 @@ from serial_vision.i18n import SUPPORTED_LOCALES, t
 from serial_vision.image_catalog import ImageCatalog
 from serial_vision.local_api import LocalApiServer
 from serial_vision.ocr import RapidOcrRecognizer
+from serial_vision.recognition_strategies import RecognitionOptions
 from serial_vision.ui.buttons import apply_button_icons, button, compact_button, icon_for, icon_size
 from serial_vision.ui.help_dialog import HelpDialog
+from serial_vision.ui.image_editor import ImageEditorDialog
+from serial_vision.ui.photo_preview import PhotoPreview
 from serial_vision.ui.theme import apply_theme
 from serial_vision.updates import ReleaseInfo, check_latest_release, create_update_log, download_linux_update, download_update, launch_update, write_update_log
 from serial_vision.version import app_version
@@ -71,25 +75,39 @@ class UpdateDownloadWorker(QThread):
 
 class RecognitionWorker(QThread):
     completed = Signal(str, str, str, str)
+    stage = Signal(str)
+    cancelled = Signal(str)
 
-    def __init__(self, image_path: Path, language: str, barcode_fallback_label: str, barcode_module_unavailable: str, parent=None) -> None:
+    def __init__(self, image_path: Path, language: str, barcode_fallback_label: str, barcode_module_unavailable: str, options: RecognitionOptions, parent=None) -> None:
         super().__init__(parent)
         self.image_path = image_path
         self.language = language
         self.barcode_fallback_label = barcode_fallback_label
         self.barcode_module_unavailable = barcode_module_unavailable
+        self.options = options
 
     def run(self) -> None:
+        if self.isInterruptionRequested():
+            self.cancelled.emit(str(self.image_path))
+            return
         ocr_text = ""
         barcode_text = ""
+        self.stage.emit("ocr")
         try:
-            ocr_text = RapidOcrRecognizer(self.language).recognize(self.image_path)
+            ocr_text = RapidOcrRecognizer(self.language, self.options).recognize(self.image_path)
         except RuntimeError as error:
             ocr_text = str(error)
+        if self.isInterruptionRequested():
+            self.cancelled.emit(str(self.image_path))
+            return
+        self.stage.emit("barcode")
         try:
-            barcode_text = BarcodeRecognizer(self.barcode_module_unavailable).recognize(self.image_path)
+            barcode_text = BarcodeRecognizer(self.barcode_module_unavailable, self.options).recognize(self.image_path)
         except RuntimeError as error:
             barcode_text = str(error)
+        if self.isInterruptionRequested():
+            self.cancelled.emit(str(self.image_path))
+            return
         decoded_values = {line.partition(": ")[2] for line in barcode_text.splitlines() if ": " in line}
         fallback_values = [value for value in extract_printed_codes(ocr_text) if value not in decoded_values]
         if fallback_values:
@@ -115,12 +133,25 @@ class AiRecognitionWorker(QThread):
             self.failed.emit(str(error))
 
 
+@dataclass(frozen=True)
+class SettingsValues:
+    locale: str
+    image_directory: str
+    theme: str
+    icon_style: str
+    rotate: bool
+    enhance: bool
+    api_enabled: bool
+    api_port: str
+
+
 class MainWindow(QMainWindow):
     def __init__(self, service: SerialVisionService) -> None:
         super().__init__(); self.service = service; self.local_api = LocalApiServer(service); self.locale = service.locale(); self.catalog = ImageCatalog(service.image_directory()); self.selected_image: Path | None = None; self.image_page = 1; self.equipment_page = 1; self.camera: QCamera | None = None; self.camera_capture: QImageCapture | None = None; self.camera_session: QMediaCaptureSession | None = None
-        self.service.register_launch(); self.startup_log_error = self.service.log_startup("Application startup started"); self.setWindowTitle(self.tr("app_name")); self.setWindowIcon(self.icon()); self.resize(1500, 920); self.create_tray(); self.create_menus(); self.recognition_generation = 0
+        self.service.register_launch(); self.startup_log_error = self.service.log_startup("Application startup started"); self.setWindowTitle(self.tr("app_name")); self.setWindowIcon(self.icon()); self.resize(1500, 920); self.create_tray(); self.create_menus(); self.recognition_generation = 0; self._recognition_workers: set[RecognitionWorker] = set(); self._recognition_busy = False
         self.tabs = QTabWidget(); self.tabs.setIconSize(icon_size(self.service.icon_style())); self.setCentralWidget(self.tabs); self.tabs.addTab(self.recognition(), self.tab_icon("recognition"), self.tr("recognition")); self.tabs.addTab(self.equipment(), self.tab_icon("equipment"), self.tr("equipment")); self.tabs.addTab(self.models(), self.tab_icon("models"), self.tr("models")); self.tabs.addTab(self.statistics(), self.tab_icon("statistics"), self.tr("statistics")); self.camera_tab = self.camera_scan(); self.tabs.addTab(self.camera_tab, self.tab_icon("scan"), self.tr("scan")); self.api_integration_tab = self.api_integrations(); self.tabs.addTab(self.api_integration_tab, self.tab_icon("api_integrations"), self.tr("api_integrations")); self.api_integration_tab.setEnabled(self.service.api_enabled()); self.tabs.addTab(self.settings(), self.tab_icon("settings"), self.tr("settings")); self.tabs.currentChanged.connect(self.on_tab_changed); self.refresh_images(); self.refresh_agents(); self.refresh_equipment(); self.refresh_models(); self.refresh_statistics(); self.refresh_api_integration()
         self.statusBar().setSizeGripEnabled(False); self.statusBar().addPermanentWidget(QLabel(f"{self.tr('developer')}  •  {self.tr('version', version=app_version())}"));
+        QTimer.singleShot(0, self.restore_splitters)
         if self.service.api_enabled():
             try: self.local_api.start()
             except OSError as error: QTimer.singleShot(0, lambda: QMessageBox.warning(self, self.tr("error"), self.tr("api_start_failed", error=str(error))))
@@ -128,10 +159,27 @@ class MainWindow(QMainWindow):
             self.service.log_startup("Main window is ready")
         else:
             QTimer.singleShot(0, self.retry_startup_log)
+        self._dismissed_update_version: str | None = None
+        self.update_check_timer = QTimer(self)
+        self.update_check_timer.setInterval(4 * 60 * 60 * 1_000)
+        self.update_check_timer.timeout.connect(self.check_updates_silently)
+        self.update_check_timer.start()
         QTimer.singleShot(60_000, self.check_updates_silently); self.show_first_run_setup() if self.service.setup_required() else None
 
     def tr(self, key: str, **values: str) -> str: return t(self.locale, key, **values)
     def icon(self) -> QIcon: return QIcon(str(Path(__file__).parents[1] / "assets" / "app-icon.png"))
+
+    def eventFilter(self, watched, event) -> bool:
+        if watched is self.image_cards.viewport() and event.type() == QEvent.Type.Resize:
+            QTimer.singleShot(0, self.relayout_image_cards)
+        return super().eventFilter(watched, event)
+
+    def restore_splitters(self) -> None:
+        for name, splitter in (("recognition_horizontal", self.photo_splitter), ("recognition_vertical", self.image_splitter)):
+            state = self.service.splitter_state(name)
+            if state:
+                splitter.restoreState(QByteArray(state))
+            splitter.splitterMoved.connect(lambda _position, _index, key=name, control=splitter: self.service.save_splitter_state(key, bytes(control.saveState())))
     def retry_startup_log(self) -> None:
         error = self.service.log_startup("Startup log retry after access error")
         if error is not None:
@@ -258,6 +306,8 @@ class MainWindow(QMainWindow):
             if show_status:
                 QMessageBox.information(self, self.tr("help"), self.tr("update_not_found"))
             return
+        if not show_status and release.version == self._dismissed_update_version:
+            return
         self.show_update_dialog(release)
 
     def show_update_dialog(self, release: ReleaseInfo) -> None:
@@ -292,7 +342,8 @@ class MainWindow(QMainWindow):
         actions.addWidget(later)
         layout.addLayout(actions)
         dialog.resize(620, 460)
-        dialog.exec()
+        if dialog.exec() == QDialog.DialogCode.Rejected:
+            self._dismissed_update_version = release.version
 
     def download_and_install_update(self, release: ReleaseInfo, dialog: QDialog) -> None:
         dialog.accept()
@@ -485,14 +536,19 @@ class MainWindow(QMainWindow):
 
     def recognition(self) -> QWidget:
         page = QWidget(); layout = QVBoxLayout(page); path = QHBoxLayout(); self.folder = QLineEdit(str(self.service.image_directory() or "")); self.folder.setReadOnly(True); open_folder = button(page, "folder", self.tr("open_folder")); open_folder.clicked.connect(self.open_folder); path.addWidget(self.folder); path.addWidget(open_folder); layout.addLayout(path)
-        split = QSplitter(Qt.Orientation.Horizontal); photos = QWidget(); left = QVBoxLayout(photos); actions = QHBoxLayout()
-        for action, handler in (("refresh", self.refresh_images), ("open_image", self.open_selected_image), ("rotate", self.rotate), ("delete", self.delete_image)):
+        split = QSplitter(Qt.Orientation.Horizontal); self.photo_splitter = split; photos = QWidget(); left = QVBoxLayout(photos); actions = QHBoxLayout()
+        for action, handler in (("refresh", self.refresh_images), ("delete", self.delete_image)):
             control = button(photos, action, self.tr(action)); control.clicked.connect(handler); actions.addWidget(control)
         images_heading = QHBoxLayout(); images_heading.addWidget(QLabel(self.tr("images"))); images_heading.addWidget(self.help_button("images", "images")); images_heading.addStretch(); left.addLayout(images_heading); left.addLayout(actions); pager = QHBoxLayout(); self.image_previous = button(photos, "previous", self.tr("previous_page")); self.image_previous.clicked.connect(lambda: self.change_image_page(-1)); self.image_page_label = QLabel(); self.image_next = button(photos, "next", self.tr("next_page")); self.image_next.clicked.connect(lambda: self.change_image_page(1)); pager.addWidget(self.image_previous); pager.addWidget(self.image_page_label); pager.addWidget(self.image_next); left.addLayout(pager)
-        self.image_cards = QScrollArea(); self.image_cards.setWidgetResizable(True); self.image_cards.setMinimumHeight(0); self.image_cards.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored); self.image_cards_content = QWidget(); self.image_cards_layout = QVBoxLayout(self.image_cards_content); self.image_cards_layout.setAlignment(Qt.AlignmentFlag.AlignTop); self.image_cards.setWidget(self.image_cards_content); self.image_button_group = QButtonGroup(self); self.image_button_group.setExclusive(True)
-        self.preview = QLabel(self.tr("select_image")); self.preview.setObjectName("imagePreview"); self.preview.setMinimumHeight(0); self.preview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored); self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter); self.image_splitter = QSplitter(Qt.Orientation.Vertical); self.image_splitter.setChildrenCollapsible(True); self.image_splitter.addWidget(self.image_cards); self.image_splitter.addWidget(self.preview); self.image_splitter.setCollapsible(0, True); self.image_splitter.setCollapsible(1, True); self.image_splitter.setSizes([360, 480]); self.image_splitter.setStretchFactor(0, 1); self.image_splitter.setStretchFactor(1, 2); left.addWidget(self.image_splitter, 1); split.addWidget(photos)
-        results = QWidget(); right = QVBoxLayout(results); ocr_heading = QHBoxLayout(); ocr_heading.addWidget(QLabel(self.tr("ocr"))); ocr_heading.addWidget(self.help_button("ocr", "ocr")); ocr_heading.addStretch(); right.addLayout(ocr_heading); ocrbar = QHBoxLayout(); self.ocr_language = QComboBox(); self.ocr_language.addItem("English", "eng"); self.ocr_language.addItem("Українська", "ukr"); self.ocr_language.addItem("Polski", "pol"); ocrbar.addWidget(QLabel(self.tr("ocr_language"))); ocrbar.addWidget(self.ocr_language); self.ocr_button = button(results, "ocr", self.tr("run_ocr")); self.ocr_button.clicked.connect(self.run_ocr); ocrbar.addWidget(self.ocr_button); right.addLayout(ocrbar); self.ocr_result = QTextEdit(self.tr("ocr_empty")); self.ocr_result.setObjectName("recognitionResult"); self.bind_result_menu(self.ocr_result); right.addWidget(self.ocr_result, 1)
-        barcode_heading = QHBoxLayout(); barcode_heading.addWidget(QLabel(self.tr("barcodes"))); barcode_heading.addWidget(self.help_button("barcode-ai", "barcodes")); barcode_heading.addStretch(); right.addLayout(barcode_heading); self.barcode_button = button(results, "ocr", self.tr("run_barcode")); self.barcode_button.clicked.connect(self.run_barcodes); right.addWidget(self.barcode_button); self.barcode_result = QTextEdit(self.tr("barcode_empty")); self.barcode_result.setObjectName("recognitionResult"); self.barcode_result.setReadOnly(True); self.bind_result_menu(self.barcode_result); right.addWidget(self.barcode_result, 1)
+        self.image_cards = QScrollArea(); self.image_cards.setWidgetResizable(True); self.image_cards.setMinimumHeight(0); self.image_cards.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored); self.image_cards_content = QWidget(); self.image_cards_layout = QVBoxLayout(self.image_cards_content); self.image_cards_layout.setAlignment(Qt.AlignmentFlag.AlignTop); self.image_cards.setWidget(self.image_cards_content); self.image_cards.viewport().installEventFilter(self); self.image_button_group = QButtonGroup(self); self.image_button_group.setExclusive(True); self.image_card_groups = []
+        preview_panel = QWidget(); preview_layout = QVBoxLayout(preview_panel); preview_layout.setContentsMargins(0, 0, 0, 0); preview_controls = QHBoxLayout()
+        for action, handler in (("open_image", self.open_selected_image), ("editor", self.edit_image), ("rotate", self.rotate)):
+            control = button(preview_panel, action, self.tr(action)); control.clicked.connect(handler); preview_controls.addWidget(control)
+        preview_controls.addStretch(); fit = button(preview_panel, "fit_image", self.tr("fit_image")); fit.clicked.connect(self.zoom_image_to_fit); actual = button(preview_panel, "actual_size", self.tr("actual_size")); actual.clicked.connect(self.zoom_image_actual); preview_controls.addWidget(fit); preview_controls.addWidget(actual); preview_layout.addLayout(preview_controls)
+        self.preview = PhotoPreview(self.tr("select_image")); self.preview.setToolTip(self.tr("preview_zoom_hint")); self.preview.setAccessibleName(self.tr("image_preview")); self.preview.setMinimumHeight(0); self.preview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Ignored); preview_layout.addWidget(self.preview, 1); self.image_splitter = QSplitter(Qt.Orientation.Vertical); self.image_splitter.setChildrenCollapsible(True); self.image_splitter.addWidget(self.image_cards); self.image_splitter.addWidget(preview_panel); self.image_splitter.setCollapsible(0, True); self.image_splitter.setCollapsible(1, True); self.image_splitter.setSizes([360, 480]); self.image_splitter.setStretchFactor(0, 1); self.image_splitter.setStretchFactor(1, 2); left.addWidget(self.image_splitter, 1); split.addWidget(photos)
+        results = QWidget(); right = QVBoxLayout(results); recognition_actions = QHBoxLayout(); self.recognition_status = QLabel(self.tr("recognition_ready")); self.recognition_status.setObjectName("recognitionStatus"); self.recognition_status.setWordWrap(True); recognition_actions.addWidget(self.recognition_status, 1); self.retry_button = button(results, "retry", self.tr("retry_recognition")); self.retry_button.setEnabled(False); self.retry_button.clicked.connect(self.retry_recognition); recognition_actions.addWidget(self.retry_button); self.cancel_recognition_button = button(results, "cancel", self.tr("cancel_recognition")); self.cancel_recognition_button.setEnabled(False); self.cancel_recognition_button.clicked.connect(self.cancel_recognition); recognition_actions.addWidget(self.cancel_recognition_button); right.addLayout(recognition_actions)
+        ocr_heading = QHBoxLayout(); ocr_heading.addWidget(QLabel(self.tr("ocr"))); ocr_heading.addWidget(self.help_button("ocr", "ocr")); ocr_heading.addStretch(); right.addLayout(ocr_heading); ocrbar = QHBoxLayout(); self.ocr_language = QComboBox(); self.ocr_language.addItem("English", "eng"); self.ocr_language.addItem("Українська", "ukr"); self.ocr_language.addItem("Polski", "pol"); ocrbar.addWidget(QLabel(self.tr("ocr_language"))); ocrbar.addWidget(self.ocr_language); right.addLayout(ocrbar); self.ocr_result = QTextEdit(self.tr("ocr_empty")); self.ocr_result.setObjectName("recognitionResult"); self.bind_result_menu(self.ocr_result); right.addWidget(self.ocr_result, 1)
+        barcode_heading = QHBoxLayout(); barcode_heading.addWidget(QLabel(self.tr("barcodes"))); barcode_heading.addWidget(self.help_button("barcode-ai", "barcodes")); barcode_heading.addStretch(); right.addLayout(barcode_heading); self.barcode_result = QTextEdit(self.tr("barcode_empty")); self.barcode_result.setObjectName("recognitionResult"); self.barcode_result.setReadOnly(True); self.bind_result_menu(self.barcode_result); right.addWidget(self.barcode_result, 1)
         ai_heading = QHBoxLayout(); ai_heading.addWidget(QLabel(self.tr("ai"))); ai_heading.addWidget(self.help_button("barcode-ai", "ai")); ai_heading.addStretch(); right.addLayout(ai_heading); ai_bar = QHBoxLayout(); self.agent_select = QComboBox(); self.agent_select.currentIndexChanged.connect(self.agent_changed); self.ai_button = button(results, "ocr", self.tr("run_ai")); self.ai_button.clicked.connect(self.run_ai); ai_bar.addWidget(self.agent_select, 1); ai_bar.addWidget(self.ai_button); right.addLayout(ai_bar); self.ai_result = QTextEdit(self.tr("ai_empty")); self.ai_result.setObjectName("recognitionResult"); self.ai_result.setReadOnly(True); self.bind_result_menu(self.ai_result); right.addWidget(self.ai_result, 1); split.addWidget(results); split.setSizes([1050, 450]); split.setStretchFactor(0, 7); split.setStretchFactor(1, 3); layout.addWidget(split); return page
 
     def camera_scan(self) -> QWidget:
@@ -594,7 +650,7 @@ class MainWindow(QMainWindow):
     def camera_image_saved(self, _request_id: int, filename: str) -> None:
         path = Path(filename)
         try:
-            result = BarcodeRecognizer(self.tr("barcode_module_unavailable")).recognize(path)
+            result = BarcodeRecognizer(self.tr("barcode_module_unavailable"), self.service.recognition_options()).recognize(path)
             self.camera_result.setPlainText(result or self.tr("camera_result_empty"))
             self.camera_status.setText(self.tr("camera_ready"))
         except RuntimeError as error:
@@ -608,16 +664,41 @@ class MainWindow(QMainWindow):
         page = QWidget(); layout = QVBoxLayout(page); layout.addWidget(self.help_button("settings", "settings"), alignment=Qt.AlignmentFlag.AlignRight)
         interface = QGroupBox(self.tr("interface_settings")); interface_form = QFormLayout(interface); self.language = QComboBox()
         for code, name in (("uk", "Українська"), ("en", "English"), ("pl", "Polski")): self.language.addItem(name, code)
-        self.language.setCurrentIndex(SUPPORTED_LOCALES.index(self.locale)); interface_form.addRow(self.tr("language"), self.language); interface_save = button(interface, "save", self.tr("save_interface")); interface_save.clicked.connect(self.save_interface_settings); interface_form.addRow(interface_save); layout.addWidget(interface)
+        self.language.setCurrentIndex(SUPPORTED_LOCALES.index(self.locale)); interface_form.addRow(self.tr("language"), self.language); layout.addWidget(interface)
 
-        folder_group = QGroupBox(self.tr("folder_settings")); folder_form = QFormLayout(folder_group); self.settings_folder_path = QLineEdit(str(self.service.image_directory() or "")); self.settings_folder_path.setReadOnly(True); choose = button(folder_group, "folder", self.tr("choose_folder")); choose.clicked.connect(self.choose_folder); folder_form.addRow(self.tr("image_folder"), self.settings_folder_path); folder_form.addRow(choose); folder_save = button(folder_group, "save", self.tr("save_folder")); folder_save.clicked.connect(self.save_folder_settings); folder_form.addRow(folder_save); layout.addWidget(folder_group)
+        folder_group = QGroupBox(self.tr("folder_settings")); folder_form = QFormLayout(folder_group); self.settings_folder_path = QLineEdit(str(self.service.image_directory() or "")); self.settings_folder_path.setReadOnly(True); choose = button(folder_group, "folder", self.tr("choose_folder")); choose.clicked.connect(self.choose_folder); folder_form.addRow(self.tr("image_folder"), self.settings_folder_path); folder_form.addRow(choose); layout.addWidget(folder_group)
 
-        appearance = QGroupBox(self.tr("appearance_settings")); appearance_form = QFormLayout(appearance); self.theme_choice = QComboBox(); self.theme_choice.addItem(self.tr("theme_system"), "system"); self.theme_choice.addItem(self.tr("theme_light"), "light"); self.theme_choice.addItem(self.tr("theme_dark"), "dark"); self.theme_choice.setCurrentIndex(max(0, self.theme_choice.findData(self.service.theme()))); self.icon_style_choice = QComboBox(); self.icon_style_choice.addItem(self.tr("icon_style_system"), "system"); self.icon_style_choice.addItem(self.tr("icon_style_modern"), "modern"); self.icon_style_choice.addItem(self.tr("icon_style_classic"), "classic"); self.icon_style_choice.addItem(self.tr("icon_style_windows98"), "windows98"); self.icon_style_choice.addItem(self.tr("icon_style_ubuntu22"), "ubuntu22"); self.icon_style_choice.setCurrentIndex(max(0, self.icon_style_choice.findData(self.service.icon_style()))); appearance_form.addRow(self.tr("theme"), self.theme_choice); appearance_form.addRow(self.tr("icon_style"), self.icon_style_choice); appearance_save = button(appearance, "save", self.tr("save_appearance")); appearance_save.clicked.connect(self.save_appearance_settings); appearance_form.addRow(appearance_save); layout.addWidget(appearance)
+        appearance = QGroupBox(self.tr("appearance_settings")); appearance_form = QFormLayout(appearance); self.theme_choice = QComboBox(); self.theme_choice.addItem(self.tr("theme_system"), "system"); self.theme_choice.addItem(self.tr("theme_light"), "light"); self.theme_choice.addItem(self.tr("theme_dark"), "dark"); self.theme_choice.setCurrentIndex(max(0, self.theme_choice.findData(self.service.theme()))); self.icon_style_choice = QComboBox(); self.icon_style_choice.addItem(self.tr("icon_style_system"), "system"); self.icon_style_choice.addItem(self.tr("icon_style_modern"), "modern"); self.icon_style_choice.addItem(self.tr("icon_style_classic"), "classic"); self.icon_style_choice.addItem(self.tr("icon_style_windows98"), "windows98"); self.icon_style_choice.addItem(self.tr("icon_style_ubuntu22"), "ubuntu22"); self.icon_style_choice.setCurrentIndex(max(0, self.icon_style_choice.findData(self.service.icon_style()))); appearance_form.addRow(self.tr("theme"), self.theme_choice); appearance_form.addRow(self.tr("icon_style"), self.icon_style_choice); layout.addWidget(appearance)
 
-        api = QGroupBox(self.tr("api_integrations")); api_form = QFormLayout(api); self.api_enabled = QCheckBox(self.tr("api_enabled")); self.api_enabled.setChecked(self.service.api_enabled()); self.api_port = QLineEdit(str(self.service.api_port())); api_form.addRow(self.api_enabled); api_form.addRow(self.tr("api_port"), self.api_port); api_save = button(api, "save", self.tr("save_api")); api_save.clicked.connect(self.save_api_settings); api_form.addRow(api_save); layout.addWidget(api)
+        recognition_group = QGroupBox(self.tr("recognition_strategies"))
+        recognition_form = QFormLayout(recognition_group)
+        options = self.service.recognition_options()
+        original_info = QLabel(self.tr("recognition_original_info"))
+        original_info.setWordWrap(True)
+        recognition_form.addRow(original_info)
+        self.recognition_rotate = QCheckBox(self.tr("recognition_rotate"))
+        self.recognition_rotate.setChecked(options.rotate)
+        recognition_form.addRow(self.recognition_rotate)
+        self.recognition_enhance = QCheckBox(self.tr("recognition_enhance"))
+        self.recognition_enhance.setChecked(options.enhance)
+        recognition_form.addRow(self.recognition_enhance)
+        layout.addWidget(recognition_group)
+
+        api = QGroupBox(self.tr("api_integrations")); api_form = QFormLayout(api); self.api_enabled = QCheckBox(self.tr("api_enabled")); self.api_enabled.setChecked(self.service.api_enabled()); self.api_port = QLineEdit(str(self.service.api_port())); api_form.addRow(self.api_enabled); api_form.addRow(self.tr("api_port"), self.api_port); layout.addWidget(api)
 
         profiles = QGroupBox(self.tr("ai_profiles")); agent = QVBoxLayout(profiles); self.agent_profiles = self.table([self.tr("profile_name"), self.tr("provider"), self.tr("model")]); self.agent_profiles.cellDoubleClicked.connect(lambda *_: self.edit_selected_agent()); agent.addWidget(self.agent_profiles)
-        actions = QHBoxLayout(); add = button(profiles, "save", self.tr("add_profile")); add.clicked.connect(self.add_agent); edit = button(profiles, "edit", self.tr("edit_profile")); edit.clicked.connect(self.edit_selected_agent); remove = button(profiles, "delete", self.tr("remove_profile")); remove.clicked.connect(self.delete_selected_agent); actions.addWidget(add); actions.addWidget(edit); actions.addWidget(remove); actions.addStretch(); agent.addLayout(actions); layout.addWidget(profiles); layout.addStretch(); scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(page); return scroll
+        actions = QHBoxLayout(); add = button(profiles, "save", self.tr("add_profile")); add.clicked.connect(self.add_agent); edit = button(profiles, "edit", self.tr("edit_profile")); edit.clicked.connect(self.edit_selected_agent); remove = button(profiles, "delete", self.tr("remove_profile")); remove.clicked.connect(self.delete_selected_agent); actions.addWidget(add); actions.addWidget(edit); actions.addWidget(remove); actions.addStretch(); agent.addLayout(actions); layout.addWidget(profiles); layout.addStretch()
+        scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(page)
+        container = QWidget(); outer = QVBoxLayout(container); outer.addWidget(scroll, 1); save_bar = QHBoxLayout(); self.settings_status = QLabel(self.tr("settings_saved")); self.settings_status.setObjectName("settingsStatus"); save_bar.addWidget(self.settings_status, 1); self.settings_save = button(container, "save", self.tr("save_settings")); self.settings_save.setEnabled(False); self.settings_save.clicked.connect(self.save_all_settings); save_bar.addWidget(self.settings_save); outer.addLayout(save_bar)
+        self.settings_page = container
+        self._settings_saved_values = self.settings_values()
+        for control in (self.language, self.theme_choice, self.icon_style_choice):
+            control.currentIndexChanged.connect(self.settings_changed)
+        for control in (self.recognition_rotate, self.recognition_enhance, self.api_enabled):
+            control.toggled.connect(self.settings_changed)
+        for control in (self.settings_folder_path, self.api_port):
+            control.textChanged.connect(self.settings_changed)
+        return container
 
     def api_integrations(self) -> QWidget:
         page = QWidget(); layout = QVBoxLayout(page); tabs = QTabWidget(); layout.addWidget(tabs)
@@ -625,10 +706,29 @@ class MainWindow(QMainWindow):
         audit_page = QWidget(); audit_layout = QVBoxLayout(audit_page); self.api_audit_table = self.table([self.tr("date_time"), self.tr("profile_name"), self.tr("method"), self.tr("path"), self.tr("status")]); audit_layout.addWidget(self.api_audit_table); audit_refresh = button(audit_page, "refresh", self.tr("refresh")); audit_refresh.clicked.connect(self.refresh_api_integration); audit_layout.addWidget(audit_refresh); tabs.addTab(audit_page, self.tr("api_audit")); return page
 
     def equipment(self) -> QWidget:
-        page = QWidget(); layout = QVBoxLayout(page); filters = QHBoxLayout(); self.date_from = QDateEdit(); self.date_from.setCalendarPopup(True); self.date_from.setSpecialValueText("—"); self.date_from.setDate(QDate(2000, 1, 1)); self.date_to = QDateEdit(); self.date_to.setCalendarPopup(True); self.date_to.setSpecialValueText("—"); self.date_to.setDate(QDate(2000, 1, 1)); self.model_filter = QComboBox(); self.operation_filter = QComboBox(); self.operation_filter.addItem(self.tr("operation"), ""); self.operation_filter.addItem(self.tr("receipt"), "receipt"); self.operation_filter.addItem(self.tr("issue"), "issue"); self.type_filter = QComboBox(); self.type_filter.addItem(self.tr("all_types"), ""); self.type_filter.addItem(self.tr("modem"), "modem"); self.type_filter.addItem(self.tr("tuner"), "tuner"); self.service_filter = QComboBox(); self.service_filter.addItem(self.tr("all_services"), ""); self.service_filter.addItem(self.tr("internet"), "internet"); self.service_filter.addItem(self.tr("television"), "television"); self.device_search = QLineEdit(); self.device_search.setPlaceholderText(self.tr("search")); refresh = button(page, "refresh", self.tr("refresh")); refresh.clicked.connect(self.refresh_equipment); export = button(page, "export", self.tr("export")); export.clicked.connect(self.export_equipment)
-        for control in (self.date_from, self.date_to, self.model_filter, self.operation_filter, self.type_filter, self.service_filter, self.device_search, refresh, export): filters.addWidget(control)
-        filters.addWidget(self.help_button("search-export", "equipment"))
-        layout.addLayout(filters); add = button(page, "save", self.tr("add_record")); add.clicked.connect(lambda: self.open_equipment_dialog("")); layout.addWidget(add); self.devices_table = self.table([self.tr(key) for key in ("date_time", "contract", "operation", "recognized_text", "model", "type", "service", "images")] + [""]); header = self.devices_table.horizontalHeader(); header.setStretchLastSection(False); header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch); header.setSectionResizeMode(8, QHeaderView.ResizeMode.Fixed); self.devices_table.setColumnWidth(8, 150); self.devices_table.cellDoubleClicked.connect(lambda row, _: self.edit_equipment(row)); layout.addWidget(self.devices_table); equipment_pager = QHBoxLayout(); self.equipment_previous = button(page, "previous", self.tr("previous_page")); self.equipment_previous.clicked.connect(lambda: self.change_equipment_page(-1)); self.equipment_page_label = QLabel(); self.equipment_next = button(page, "next", self.tr("next_page")); self.equipment_next.clicked.connect(lambda: self.change_equipment_page(1)); equipment_pager.addWidget(self.equipment_previous); equipment_pager.addWidget(self.equipment_page_label); equipment_pager.addWidget(self.equipment_next); layout.addLayout(equipment_pager); return page
+        page = QWidget(); layout = QVBoxLayout(page)
+        self.date_from = QDateEdit(); self.date_from.setCalendarPopup(True); self.date_from.setSpecialValueText("—"); self.date_from.setDate(QDate(2000, 1, 1))
+        self.date_to = QDateEdit(); self.date_to.setCalendarPopup(True); self.date_to.setSpecialValueText("—"); self.date_to.setDate(QDate(2000, 1, 1))
+        self.model_filter = QComboBox()
+        self.operation_filter = QComboBox(); self.operation_filter.addItem(self.tr("operation"), ""); self.operation_filter.addItem(self.tr("receipt"), "receipt"); self.operation_filter.addItem(self.tr("issue"), "issue")
+        self.type_filter = QComboBox(); self.type_filter.addItem(self.tr("all_types"), ""); self.type_filter.addItem(self.tr("modem"), "modem"); self.type_filter.addItem(self.tr("tuner"), "tuner")
+        self.service_filter = QComboBox(); self.service_filter.addItem(self.tr("all_services"), ""); self.service_filter.addItem(self.tr("internet"), "internet"); self.service_filter.addItem(self.tr("television"), "television")
+        self.device_search = QLineEdit(); self.device_search.setPlaceholderText(self.tr("search")); self.device_search.returnPressed.connect(self.refresh_equipment)
+        filters = QGridLayout()
+        filter_fields = (("date_from_label", self.date_from), ("date_to_label", self.date_to), ("model", self.model_filter), ("operation", self.operation_filter), ("type", self.type_filter), ("service", self.service_filter))
+        for index, (label_key, control) in enumerate(filter_fields):
+            row, column = divmod(index, 3)
+            filters.addWidget(QLabel(self.tr(label_key)), row * 2, column)
+            filters.addWidget(control, row * 2 + 1, column)
+        filters.addWidget(QLabel(self.tr("search")), 4, 0)
+        filters.addWidget(self.device_search, 5, 0, 1, 2)
+        filter_actions = QHBoxLayout(); refresh = button(page, "refresh", self.tr("refresh")); refresh.clicked.connect(self.refresh_equipment); export = button(page, "export", self.tr("export")); export.clicked.connect(self.export_equipment); filter_actions.addWidget(refresh); filter_actions.addWidget(export); filter_actions.addWidget(self.help_button("search-export", "equipment")); filters.addLayout(filter_actions, 5, 2)
+        for column in range(3):
+            filters.setColumnStretch(column, 1)
+        layout.addLayout(filters)
+        add = button(page, "save", self.tr("add_record")); add.clicked.connect(lambda: self.open_equipment_dialog("")); layout.addWidget(add)
+        self.devices_table = self.table([self.tr(key) for key in ("date_time", "contract", "operation", "recognized_text", "model", "type", "service", "images", "actions")]); header = self.devices_table.horizontalHeader(); header.setStretchLastSection(False); header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch); header.setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents); self.devices_table.cellDoubleClicked.connect(lambda row, _: self.edit_equipment(row)); layout.addWidget(self.devices_table)
+        equipment_pager = QHBoxLayout(); self.equipment_previous = button(page, "previous", self.tr("previous_page")); self.equipment_previous.clicked.connect(lambda: self.change_equipment_page(-1)); self.equipment_page_label = QLabel(); self.equipment_next = button(page, "next", self.tr("next_page")); self.equipment_next.clicked.connect(lambda: self.change_equipment_page(1)); equipment_pager.addWidget(self.equipment_previous); equipment_pager.addWidget(self.equipment_page_label); equipment_pager.addWidget(self.equipment_next); layout.addLayout(equipment_pager); return page
 
     def models(self) -> QWidget:
         page = QWidget(); layout = QVBoxLayout(page); controls = QHBoxLayout(); add = button(page, "save", self.tr("add_model")); add.clicked.connect(self.add_model); import_button = button(page, "open", self.tr("import_models")); import_button.clicked.connect(self.import_models); controls.addWidget(add); controls.addWidget(import_button); controls.addWidget(self.help_button("models", "models")); controls.addStretch(); layout.addLayout(controls)
@@ -689,47 +789,123 @@ class MainWindow(QMainWindow):
         while self.image_cards_layout.count():
             item = self.image_cards_layout.takeAt(0)
             if item.widget(): item.widget().deleteLater()
+        self.image_button_group.deleteLater()
         self.image_button_group = QButtonGroup(self); self.image_button_group.setExclusive(True)
         images, metadata = self.catalog.page(self.image_page); self.image_page = int(metadata["page"]); self.image_page_label.setText(str(self.image_page) + "/" + str(metadata["pages"])); self.image_previous.setEnabled(self.image_page > 1); self.image_next.setEnabled(bool(metadata["has_more"]))
+        if self.selected_image is not None and self.selected_image not in {image.path for image in images}:
+            self.clear_image_selection()
+        self.image_card_groups = []
+        self._image_buttons = {}
         groups: dict[str, list] = {}
         for image in images:
             label = datetime.fromtimestamp(image.path.stat().st_mtime).strftime("%Y-%m-%d")
             groups.setdefault(label, []).append(image)
         for date_label, day_images in groups.items():
             heading = QLabel(self.period_label(date_label)); heading.setObjectName("imageDateHeading"); self.image_cards_layout.addWidget(heading)
-            cards = QWidget(); grid = QGridLayout(cards); grid.setContentsMargins(0, 0, 0, 0)
+            cards = QWidget(); grid = QGridLayout(cards); grid.setContentsMargins(0, 0, 0, 0); grid.setSpacing(8); day_cards = []
             for index, image in enumerate(day_images):
-                card = QToolButton(cards); card.setCheckable(True); card.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon); card.setText(image.name); card.setToolTip(image.name); card.setAccessibleName(image.name); pixmap = QPixmap(str(image.path)); card.setIcon(QIcon(pixmap)); card.setIconSize(QSize(150, 95)); card.setMinimumWidth(165); card.setMaximumWidth(205); card.setMinimumHeight(130); card.clicked.connect(lambda _checked=False, path=image.path: self.select_image_path(path)); self.image_button_group.addButton(card); grid.addWidget(card, index // 4, index % 4)
+                card = QToolButton(cards); card.setCheckable(True); card.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon); card.setText(image.name); card.setToolTip(image.name); card.setAccessibleName(image.name); pixmap = QPixmap(str(image.path)); card.setIcon(QIcon(pixmap)); card.setIconSize(QSize(150, 95)); card.setMinimumWidth(165); card.setMaximumWidth(205); card.setMinimumHeight(130); card.setChecked(image.path == self.selected_image); card.clicked.connect(lambda _checked=False, path=image.path: self.select_image_path(path)); self.image_button_group.addButton(card); day_cards.append(card); self._image_buttons[image.path] = card; grid.addWidget(card, index // 4, index % 4)
+            self.image_card_groups.append((grid, day_cards))
             self.image_cards_layout.addWidget(cards)
         self.image_cards_layout.addStretch()
+        self.relayout_image_cards()
+
+    def relayout_image_cards(self) -> None:
+        columns = max(1, (self.image_cards.viewport().width() - 16) // 173)
+        for grid, cards in self.image_card_groups:
+            for index, card in enumerate(cards):
+                grid.addWidget(card, index // columns, index % columns)
 
     def change_image_page(self, offset: int) -> None:
         self.image_page = max(1, self.image_page + offset)
         self.refresh_images()
 
     def select_image_path(self, image_path: Path) -> None:
+        if not self.preview.set_image(image_path):
+            self.clear_image_selection()
+            QMessageBox.warning(self, self.tr("error"), self.tr("open_file_failed", error=str(image_path)))
+            return
         self.selected_image = image_path
-        self.preview.setPixmap(QPixmap(str(image_path)).scaled(self.preview.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        card = self._image_buttons.get(image_path)
+        if card is not None:
+            card.setChecked(True)
+        self.start_recognition()
+
+    def clear_image_selection(self) -> None:
+        worker = getattr(self, "recognition_worker", None)
+        if worker is not None and worker.isRunning():
+            worker.requestInterruption()
+        self.recognition_generation += 1
+        self.selected_image = None
+        self.preview.set_image(None)
+        self.ocr_result.setPlainText(self.tr("ocr_empty"))
+        self.barcode_result.setPlainText(self.tr("barcode_empty"))
+        self.ai_result.setPlainText(self.tr("ai_empty"))
+        self.recognition_status.setText(self.tr("recognition_ready"))
+        self.set_recognition_busy(False)
+
+    def start_recognition(self) -> None:
+        if self.selected_image is None:
+            return
+        old_worker = getattr(self, "recognition_worker", None)
+        if old_worker is not None and old_worker.isRunning():
+            old_worker.requestInterruption()
         self.recognition_generation += 1
         generation = self.recognition_generation
         self.set_recognition_busy(True)
+        self.recognition_status.setText(self.tr("recognition_step_ocr"))
         self.ocr_result.setPlainText(self.tr("recognizing"))
         self.barcode_result.setPlainText(self.tr("recognizing"))
-        self.recognition_worker = RecognitionWorker(image_path, self.ocr_language.currentData(), self.tr("barcode_ocr_fallback"), self.tr("barcode_module_unavailable"), self)
-        self.recognition_worker.completed.connect(lambda path, ocr_text, barcode_text, error, current=generation: self.recognition_finished(current, path, ocr_text, barcode_text, error))
-        self.recognition_worker.start()
+        worker = RecognitionWorker(self.selected_image, self.ocr_language.currentData(), self.tr("barcode_ocr_fallback"), self.tr("barcode_module_unavailable"), self.service.recognition_options(), self)
+        self.recognition_worker = worker
+        self._recognition_workers.add(worker)
+        worker.stage.connect(lambda stage, current=generation: self.recognition_stage(current, stage))
+        worker.completed.connect(lambda path, ocr_text, barcode_text, error, current=generation: self.recognition_finished(current, path, ocr_text, barcode_text, error))
+        worker.cancelled.connect(lambda _path, current=generation: self.recognition_cancelled(current))
+        worker.finished.connect(lambda current=worker: self.recognition_worker_finished(current))
+        worker.start()
+
+    def recognition_worker_finished(self, worker: RecognitionWorker) -> None:
+        self._recognition_workers.discard(worker)
+        if getattr(self, "recognition_worker", None) is worker:
+            self.recognition_worker = None
+        worker.deleteLater()
+
+    def recognition_stage(self, generation: int, stage: str) -> None:
+        worker = getattr(self, "recognition_worker", None)
+        if generation == self.recognition_generation and (worker is None or not worker.isInterruptionRequested()):
+            self.recognition_status.setText(self.tr("recognition_step_ocr" if stage == "ocr" else "recognition_step_barcode"))
+
+    def cancel_recognition(self) -> None:
+        worker = getattr(self, "recognition_worker", None)
+        if worker is not None and worker.isRunning():
+            worker.requestInterruption()
+            self.recognition_status.setText(self.tr("recognition_cancelling"))
+            self.cancel_recognition_button.setEnabled(False)
+
+    def recognition_cancelled(self, generation: int) -> None:
+        if generation != self.recognition_generation:
+            return
+        self.ocr_result.setPlainText(self.tr("recognition_cancelled"))
+        self.barcode_result.setPlainText(self.tr("recognition_cancelled"))
+        self.recognition_status.setText(self.tr("recognition_cancelled"))
+        self.set_recognition_busy(False)
 
     def set_recognition_busy(self, busy: bool) -> None:
-        for widget in (self.ocr_language, self.ocr_button, self.barcode_button, self.ocr_result, self.barcode_result, self.agent_select, self.ai_button, self.ai_result):
+        self._recognition_busy = busy
+        for widget in (self.ocr_language, self.ocr_result, self.barcode_result, self.agent_select):
             widget.setDisabled(busy)
+        self.retry_button.setEnabled(not busy and self.selected_image is not None)
+        self.cancel_recognition_button.setEnabled(busy)
+        self.agent_changed()
 
     def recognition_finished(self, generation: int, image_path: str, ocr_text: str, barcode_text: str, error: str) -> None:
         if generation != self.recognition_generation or self.selected_image is None or str(self.selected_image) != image_path:
             return
         self.ocr_result.setPlainText(ocr_text or self.tr("ocr_empty"))
         self.barcode_result.setPlainText(barcode_text or self.tr("barcodes_not_found"))
+        self.recognition_status.setText(self.tr("recognition_finished"))
         self.set_recognition_busy(False)
-        self.agent_changed()
 
     def required(self) -> bool:
         if self.selected_image is None: QMessageBox.warning(self, self.tr("error"), self.tr("no_image")); return False
@@ -739,6 +915,26 @@ class MainWindow(QMainWindow):
         if self.required():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.selected_image)))
 
+    def edit_image(self) -> None:
+        if not self.required():
+            return
+        existing = getattr(self, "image_editor", None)
+        if existing is not None and existing.isVisible():
+            existing.raise_()
+            existing.activateWindow()
+            return
+        try:
+            dialog = ImageEditorDialog(
+                self.service, self.selected_image, self.locale, str(self.ocr_language.currentData()),
+                RecognitionWorker, AiRecognitionWorker, self,
+            )
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self, self.tr("error"), self.tr("open_file_failed", error=str(error)))
+            return
+        self.image_editor = dialog
+        dialog.destroyed.connect(lambda: setattr(self, "image_editor", None) if self.image_editor is dialog else None)
+        dialog.show()
+
     def rotate(self) -> None:
         if self.required():
             self.catalog.rotate_clockwise(self.selected_image)
@@ -746,15 +942,17 @@ class MainWindow(QMainWindow):
 
     def delete_image(self) -> None:
         if self.required() and QMessageBox.question(self, self.tr("confirm"), self.tr("delete_image")) == QMessageBox.StandardButton.Yes:
-            self.catalog.delete(self.selected_image); self.selected_image = None; self.preview.setText(self.tr("select_image")); self.refresh_images()
+            self.catalog.delete(self.selected_image); self.clear_image_selection(); self.refresh_images()
 
-    def run_ocr(self) -> None:
-        if self.required() and (not getattr(self, "recognition_worker", None) or not self.recognition_worker.isRunning()):
-            self.select_image_path(self.selected_image)
+    def zoom_image_to_fit(self) -> None:
+        self.preview.zoom_to_fit()
 
-    def run_barcodes(self) -> None:
+    def zoom_image_actual(self) -> None:
+        self.preview.zoom_actual()
+
+    def retry_recognition(self) -> None:
         if self.required() and (not getattr(self, "recognition_worker", None) or not self.recognition_worker.isRunning()):
-            self.select_image_path(self.selected_image)
+            self.start_recognition()
 
     def run_ai(self) -> None:
         if not self.required(): return
@@ -775,13 +973,85 @@ class MainWindow(QMainWindow):
     def ai_failed(self, error: str) -> None:
         self.ai_result.setPlainText(self.tr(error) if error in {"ai_profile_missing", "profile_key_required"} else error); self.set_ai_busy(False)
 
-    def save_api_settings(self) -> None:
-        try:
-            self.service.save_api_settings(self.api_enabled.isChecked(), int(self.api_port.text()))
-            self.local_api.restart(); self.api_integration_tab.setEnabled(self.api_enabled.isChecked())
-        except (ValueError, OSError) as error:
-            QMessageBox.warning(self, self.tr("error"), self.tr(str(error)) if str(error) in {"api_port_invalid", "api_rate_invalid"} else self.tr("api_start_failed", error=str(error))); return
-        QMessageBox.information(self, self.tr("settings"), self.tr("settings_saved"))
+    def settings_values(self) -> SettingsValues:
+        return SettingsValues(
+            locale=str(self.language.currentData()),
+            image_directory=self.settings_folder_path.text(),
+            theme=str(self.theme_choice.currentData()),
+            icon_style=str(self.icon_style_choice.currentData()),
+            rotate=self.recognition_rotate.isChecked(),
+            enhance=self.recognition_enhance.isChecked(),
+            api_enabled=self.api_enabled.isChecked(),
+            api_port=self.api_port.text().strip(),
+        )
+
+    def settings_changed(self, *_args) -> None:
+        dirty = self.settings_values() != self._settings_saved_values
+        self.settings_save.setEnabled(dirty)
+        self.settings_status.setText(self.tr("settings_unsaved" if dirty else "settings_saved"))
+        self.settings_status.setProperty("state", "dirty" if dirty else "saved")
+        self.settings_status.style().unpolish(self.settings_status)
+        self.settings_status.style().polish(self.settings_status)
+        if hasattr(self, "tabs"):
+            index = self.tabs.indexOf(self.settings_page)
+            if index >= 0:
+                self.tabs.setTabText(index, self.tr("settings") + (" *" if dirty else ""))
+
+    def save_all_settings(self) -> None:
+        current = self.settings_values()
+        previous = self._settings_saved_values
+        folder = Path(current.image_directory)
+        folder_changed = current.image_directory != previous.image_directory
+        if folder_changed and not folder.is_dir():
+            self.settings_status.setText(self.tr("folder_missing"))
+            return
+        api_changed = (current.api_enabled, current.api_port) != (previous.api_enabled, previous.api_port)
+        if api_changed:
+            try:
+                port = int(current.api_port)
+            except ValueError:
+                self.settings_status.setText(self.tr("api_port_invalid"))
+                self.api_port.setFocus()
+                return
+            if not 1024 <= port <= 65535:
+                self.settings_status.setText(self.tr("api_port_invalid"))
+                self.api_port.setFocus()
+                return
+            try:
+                self.service.save_api_settings(current.api_enabled, port)
+                self.local_api.restart()
+            except (ValueError, OSError) as error:
+                self.service.save_api_settings(previous.api_enabled, int(previous.api_port))
+                try:
+                    self.local_api.restart()
+                except OSError:
+                    pass
+                self.settings_status.setText(self.tr("api_start_failed", error=str(error)))
+                return
+            self.api_integration_tab.setEnabled(current.api_enabled)
+        if folder_changed:
+            self.service.save_settings(folder)
+            self.image_page = 1
+            self.clear_image_selection()
+            self.refresh_images()
+        if (current.rotate, current.enhance) != (previous.rotate, previous.enhance):
+            self.service.save_recognition_options(RecognitionOptions(current.rotate, current.enhance))
+        if (current.theme, current.icon_style) != (previous.theme, previous.icon_style):
+            self.service.save_appearance(current.theme, current.icon_style)
+            app = QApplication.instance()
+            if app is not None:
+                apply_button_icons(current.icon_style)
+                self.tabs.setIconSize(icon_size(current.icon_style))
+                for index, name in enumerate(("recognition", "equipment", "models", "statistics", "scan", "api_integrations", "settings")):
+                    self.tabs.setTabIcon(index, self.tab_icon(name))
+                apply_theme(app, current.theme)
+                self.refresh_equipment()
+        if current.locale != previous.locale:
+            self.service.save_locale(current.locale)
+        self._settings_saved_values = current
+        self.settings_changed()
+        if current.locale != previous.locale:
+            self.settings_status.setText(self.tr("restart_language"))
 
     def refresh_api_integration(self) -> None:
         if not hasattr(self, "api_keys_table"): return
@@ -816,8 +1086,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, "agent_profiles"): self.refresh_agent_profiles()
 
     def agent_changed(self) -> None:
-        if not getattr(self, "recognition_worker", None) or not self.recognition_worker.isRunning():
-            enabled = bool(self.agent_select.currentData()); self.ai_result.setDisabled(not enabled); self.ai_button.setDisabled(not enabled)
+        enabled = not self._recognition_busy and self.selected_image is not None and bool(self.agent_select.currentData())
+        self.ai_result.setDisabled(not enabled); self.ai_button.setDisabled(not enabled)
 
     def refresh_agent_profiles(self) -> None:
         self.agent_profiles.setRowCount(len(self.agents))
@@ -864,28 +1134,6 @@ class MainWindow(QMainWindow):
     def choose_folder(self) -> None:
         path = QFileDialog.getExistingDirectory(self, self.tr("choose_folder"), self.settings_folder_path.text() if hasattr(self, "settings_folder_path") else str(self.service.image_directory() or ""))
         if path and hasattr(self, "settings_folder_path"): self.settings_folder_path.setText(path)
-
-    def save_interface_settings(self) -> None:
-        self.service.save_locale(self.language.currentData()); QMessageBox.information(self, self.tr("settings"), self.tr("restart_language"))
-
-    def save_folder_settings(self) -> None:
-        try:
-            self.service.save_settings(Path(self.settings_folder_path.text()))
-        except ValueError:
-            QMessageBox.warning(self, self.tr("error"), self.tr("folder_missing")); return
-        self.image_page = 1; self.selected_image = None; self.refresh_images()
-
-    def save_appearance_settings(self) -> None:
-        icon_style = self.icon_style_choice.currentData()
-        self.service.save_appearance(self.theme_choice.currentData(), icon_style)
-        app = QApplication.instance()
-        if app is not None:
-            apply_button_icons(icon_style)
-            self.tabs.setIconSize(icon_size(icon_style))
-            for index, name in enumerate(("recognition", "equipment", "models", "statistics", "scan", "api_integrations", "settings")):
-                self.tabs.setTabIcon(index, self.tab_icon(name))
-            apply_theme(app, self.theme_choice.currentData())
-        QMessageBox.information(self, self.tr("settings"), self.tr("settings_saved"))
 
     def bind_result_menu(self, field: QTextEdit) -> None:
         field.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -989,14 +1237,22 @@ class MainWindow(QMainWindow):
         rows, self.equipment_pagination = self.service.devices(self.device_search.text().strip(), self.type_filter.currentData(), self.service_filter.currentData(), date_from, date_to, self.model_filter.currentData() or None, self.operation_filter.currentData(), getattr(self, "equipment_page", 1)); self.current_devices = rows; self.devices_table.setRowCount(len(rows)); pagination = self.equipment_pagination; self.equipment_page_label.setText(str(self.equipment_page) if pagination is None else str(pagination["page"]) + "/" + str(pagination["pages"])); self.equipment_previous.setEnabled(pagination is not None and pagination["page"] > 1); self.equipment_next.setEnabled(pagination is not None and pagination["page"] < pagination["pages"]); self.equipment_page = 1 if pagination is None else pagination["page"]
         for row, device in enumerate(rows):
             self.fill(self.devices_table, row, [self.service.display_time(device["registered_at"]), device["contract_number"] or "", self.tr(device["operation_type"]), device["recognized_text"], device["model_name"], self.tr(device["device_type"]), self.tr(device["service"]), device["source_image_path"] or "", ""]); self.devices_table.item(row, 0).setData(Qt.ItemDataRole.UserRole, device["id"])
-            actions = QWidget(); actions.setFixedWidth(150); action_layout = QHBoxLayout(actions); action_layout.setContentsMargins(5, 0, 5, 0); action_layout.setSpacing(5); action_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            edit = compact_button(actions, "edit", self.tr("edit")); edit.clicked.connect(lambda _, index=row: self.edit_equipment(index))
-            source = compact_button(actions, "folder", self.tr("open_source_image")); source.clicked.connect(lambda _, index=row: self.open_source_image(index))
-            qr = compact_button(actions, "generate_qr", self.tr("generate_qr")); qr.clicked.connect(lambda _, index=row: self.show_generated_code(self.current_devices[index]["recognized_text"], "qr"))
-            barcode = compact_button(actions, "generate_barcode", self.tr("generate_barcode")); barcode.clicked.connect(lambda _, index=row: self.show_generated_code(self.current_devices[index]["recognized_text"], "barcode"))
-            delete = compact_button(actions, "delete", self.tr("delete")); delete.clicked.connect(lambda _, index=row: self.delete_equipment(index))
-            for control in (edit, source, qr, barcode, delete):
-                action_layout.addWidget(control)
+            actions = QWidget(); action_layout = QHBoxLayout(actions); action_layout.setContentsMargins(4, 0, 4, 0); action_layout.setSpacing(6)
+            edit = button(actions, "edit", self.tr("edit")); edit.clicked.connect(lambda _, index=row: self.edit_equipment(index))
+            more = button(actions, "actions", self.tr("actions"))
+            menu = QMenu(more)
+            for title, icon_name, handler in (
+                ("open_source_image", "folder", lambda _checked=False, index=row: self.open_source_image(index)),
+                ("generate_qr", "generate_qr", lambda _checked=False, index=row: self.show_generated_code(self.current_devices[index]["recognized_text"], "qr")),
+                ("generate_barcode", "generate_barcode", lambda _checked=False, index=row: self.show_generated_code(self.current_devices[index]["recognized_text"], "barcode")),
+            ):
+                action = menu.addAction(icon_for(more, icon_name), self.tr(title))
+                action.triggered.connect(handler)
+            menu.addSeparator()
+            delete = menu.addAction(icon_for(more, "delete"), self.tr("delete"))
+            delete.triggered.connect(lambda _checked=False, index=row: self.delete_equipment(index))
+            more.setMenu(menu)
+            action_layout.addWidget(edit); action_layout.addWidget(more)
             self.devices_table.setCellWidget(row, 8, actions)
 
     def change_equipment_page(self, offset: int) -> None:

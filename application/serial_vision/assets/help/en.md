@@ -24,6 +24,12 @@ Question-mark buttons open the matching help topic. Tooltips explain compact ico
 
 The image catalogue is recursive and paged, so it can work with large folders. Select an image card to see a larger preview. Local OCR and barcode reading start in the background after selection; wait for the result and check it carefully.
 
+Use the mouse wheel over the preview to zoom and drag to pan. Fit adapts to the panel; 100% shows the image at its original size. The two splitters remember their positions. Refresh keeps a visible photo selected; changing to a page without it clears the selection and old results. Recognize again repeats both OCR and barcode stages. Cancel stops after the current recognizer call finishes, without changing the source file.
+
+Photo editor opens the selected image in a separate window. Drag a rectangle around the label or barcode. Drag its edge or corner handles to shrink or expand the selection, or drag inside it to move it. The frame stays within the photo and its coordinates update as you drag. Choose Crop when ready, or enter X, Y, width and height in pixels for precise keyboard-accessible cropping. Drag the dot above the photo to rotate the whole image to any angle with a live preview. Without a mouse, enter degrees in Rotation angle and choose Rotate by angle. Rotation clears the crop selection because image coordinates change. Rotate right, resize by percentage, Fit, 100% and Reset edits are also available. Advanced adjustments use sliders for brightness, contrast, color saturation and sharpness, with percentage values alongside. Edits remain in a working copy; the original file is not overwritten.
+
+Recognize in the editor processes that working copy and shows OCR, barcode and AI results in three separate fields. No AI (local only) is selected by default and sends nothing online. If you explicitly choose an AI profile, the prepared photo is sent to its provider after local recognition. Editor results do not create an equipment record automatically; closing the editor removes its temporary snapshot.
+
 Use Rotate right only for the intended source file, because it changes that image. Open opens it in the system viewer. Delete is limited to files inside the selected image root and asks for confirmation. For best results, photograph the label sharply, straight on, without glare, and leave a small margin around text or the barcode.
 
 <!-- section: ocr -->
@@ -31,12 +37,12 @@ Use Rotate right only for the intended source file, because it changes that imag
 
 Advanced Serial Vision uses RapidOCR locally. Selecting or running OCR does not send the image to a cloud service. Choose the OCR language that best matches the label: English for most technical serial labels, Ukrainian or Polish for supporting text. The language improves recognition but does not replace human checking.
 
-The OCR result is editable. Copy it from the context menu or Edit menu, then correct ambiguous characters before saving. Typical label mistakes are O/0, I/1, S/5 and B/8. If no text is found, try a clearer source photo, a different orientation or another OCR language.
+The OCR result is editable. The original photo is read first. If that result is weak, enabled fallback strategies try right-angle rotations and moderate contrast/sharpness enhancement. In Settings → Recognition strategies, uncheck both options to use the previous original-only behavior. Check ambiguous O/0, I/1, S/5 and B/8 before saving.
 
 <!-- section: barcode-ai -->
 ## Barcodes and optional AI recognition
 
-Use Read barcodes to extract a supported 1D or 2D barcode from the selected photograph. A missing result can simply mean the code is too small, damaged, reflective or unsupported. Copy a result where it is needed; barcode output itself is read-only.
+Barcode reading starts automatically when a photo is selected. The original decoder has priority; fallbacks run if it finds no code. Values recovered from printed label text are marked as OCR, not verified barcode decodes. Strong motion blur or perspective distortion can erase the bars themselves; retake a close, focused photo in that case. Barcode output is read-only.
 
 AI recognition is optional and never runs automatically. It requires a selected photo and an AI profile with a provider, model and API key. The secret is stored in the operating-system credential store rather than SQLite. An AI request can send a prepared image to the chosen provider, so use it only when that transfer is permitted by your privacy rules.
 
@@ -54,7 +60,7 @@ In the record form, the serial/MAC field has Get QR code and Get barcode buttons
 <!-- section: search-export -->
 ## Search, filters and CSV export
 
-Equipment filters cover date range, model, operation, device type, service and a text fragment. Combine them, then press Refresh. For example, find all Internet modem issues for a month or a fragment of a serial number.
+The labelled Equipment filters cover date range, model, operation, device type, service and a text fragment. Combine them, then press Refresh. For example, find all Internet modem issues for a month or a fragment of a serial number. Edit stays visible on each row; source image, generated codes and Delete are in its Actions menu. Delete still requires confirmation.
 
 The table is paged for large result sets, but Export CSV exports every record that matches the active filters, not only the current page. Check all active controls before exporting. Use a clear filename and preserve the exported original before making spreadsheet edits. CSV uses Windows-1251 encoding for common Microsoft Excel compatibility in Ukrainian Windows environments.
 
@@ -77,7 +83,7 @@ Chart values are counts of records, not a live inventory balance. To inspect a p
 
 Choose Ukrainian, English or Polish in Interface settings, save it and restart the application to apply the language. Changing language affects labels only, not the underlying codes or saved records.
 
-Change the image folder only deliberately. Appearance supports system, light and dark themes plus system, modern, classic, Windows 98 and Ubuntu 22 icon styles. These choices change presentation, not data. AI profiles are managed here; never share an API key in a screenshot, message or CSV file.
+Change the image folder only deliberately. Appearance supports system, light and dark themes plus system, modern, classic, Windows 98 and Ubuntu 22 icon styles. These choices change presentation, not data. Unsaved interface, folder, appearance, recognition and local API changes are marked and applied with one Save settings button. AI profiles are managed separately; never share an API key in a screenshot, message or CSV file.
 
 <!-- section: updates-diagnostics -->
 ## Updates, startup log and troubleshooting

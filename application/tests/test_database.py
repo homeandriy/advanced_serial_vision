@@ -7,9 +7,24 @@ from pathlib import Path
 
 from serial_vision.application_service import SerialVisionService
 from serial_vision.database import Database
+from serial_vision.recognition_strategies import RecognitionOptions
 
 
 class DatabaseTest(unittest.TestCase):
+    def test_splitter_positions_are_saved_per_user(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            service = SerialVisionService(Database(Path(directory) / "database.sqlite3"))
+            self.assertIsNone(service.splitter_state("recognition_horizontal"))
+            service.save_splitter_state("recognition_horizontal", b"Qt splitter state")
+            self.assertEqual(b"Qt splitter state", service.splitter_state("recognition_horizontal"))
+
+    def test_recognition_strategy_options_are_saved_per_user(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            service = SerialVisionService(Database(Path(directory) / "database.sqlite3"))
+            self.assertEqual(RecognitionOptions(), service.recognition_options())
+            service.save_recognition_options(RecognitionOptions(rotate=False, enhance=True))
+            self.assertEqual(RecognitionOptions(rotate=False, enhance=True), service.recognition_options())
+
     def test_saves_and_filters_devices(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database = Database(Path(directory) / "database.sqlite3")

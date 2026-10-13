@@ -3,7 +3,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from PIL import Image, ImageEnhance, ImageOps
+from PIL import Image
+
+from serial_vision.recognition_strategies import OriginalStrategy, RecognitionOptions, fallback_strategies, normalized_image
 
 
 _PRINTED_CODE_PATTERNS = (
@@ -25,8 +27,9 @@ def extract_printed_codes(text: str) -> list[str]:
 
 
 class BarcodeRecognizer:
-    def __init__(self, module_unavailable_message: str = "Модуль розпізнавання штрихкодів не встановлено.") -> None:
+    def __init__(self, module_unavailable_message: str = "Модуль розпізнавання штрихкодів не встановлено.", options: RecognitionOptions | None = None) -> None:
         self.module_unavailable_message = module_unavailable_message
+        self.options = options or RecognitionOptions()
 
     def recognize(self, image_path: Path) -> str:
         try:
@@ -34,24 +37,18 @@ class BarcodeRecognizer:
         except ImportError as error:
             raise RuntimeError(self.module_unavailable_message) from error
 
-        values: list[str] = []
         with Image.open(image_path) as image:
-            for variant in self._variants(image):
-                results = zxingcpp.read_barcodes(
-                    variant,
-                    try_rotate=True,
-                    try_downscale=True,
-                )
-                values.extend(f"{item.format.name}: {item.text}" for item in results if item.text)
-        return "\n".join(dict.fromkeys(values))
-
-    @staticmethod
-    def _variants(image: Image.Image) -> tuple[Image.Image, ...]:
-        original = ImageOps.exif_transpose(image).convert("RGB")
-        grayscale = ImageOps.grayscale(original)
-        enlarged = grayscale.resize(
-            (grayscale.width * 2, grayscale.height * 2),
-            Image.Resampling.LANCZOS,
-        )
-        enhanced = ImageEnhance.Contrast(ImageOps.autocontrast(enlarged)).enhance(2.0)
-        return original, enlarged, enhanced
+            original = normalized_image(image)
+            strategies = (OriginalStrategy(), *fallback_strategies(self.options))
+            for strategy in strategies:
+                for variant in strategy.variants(original):
+                    try:
+                        results = zxingcpp.read_barcodes(variant)
+                    except (RuntimeError, ValueError):
+                        if isinstance(strategy, OriginalStrategy):
+                            raise
+                        continue
+                    values = [f"{item.format.name}: {item.text}" for item in results if item.text]
+                    if values:
+                        return "\n".join(dict.fromkeys(values))
+        return ""

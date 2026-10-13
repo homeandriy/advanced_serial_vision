@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## v0.7.0 - 2026-10-14
+
+### Added
+
+- A non-destructive photo editor with adjustable crop handles, rotation, resizing, and image-adjustment sliders; its working copy can be recognized by OCR, barcode, and an explicitly selected AI profile.
+- Optional right-angle rotation and image-enhancement recognition strategies, selectable in Settings, to recover labels in differently oriented or soft photos while retaining the original-image result as the first choice.
+- Periodic update checks while the application stays open, with the release changelog shown before any download or installation.
+
+### Changed
+
+- Photo preview supports wheel zoom, Fit and 100% controls, adaptive gallery columns, and splitters whose positions are remembered.
+- Recognition uses a single Retry action with stage and cancellation feedback; equipment filters and row actions are clearer, and Settings has one Save action with an unsaved-changes indicator.
+- Choosing Later suppresses repeated automatic prompts for the same release during the current session; manual checks remain available.
+
+### Fixed
+
+- Refreshing or paging the gallery no longer leaves an invisible selected photo that could be processed or deleted accidentally.
+- Recognition can fall back to serial and MAC-like values printed beside unreadable barcodes.
+
 ## v0.6.2 - 2026-10-07
 
 ### Changed
