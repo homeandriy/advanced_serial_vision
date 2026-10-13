@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## v0.7.1 - 2026-10-14
+## v0.7.2 - 2026-10-14
 
 ### Added
 
@@ -20,7 +20,7 @@
 
 - Refreshing or paging the gallery no longer leaves an invisible selected photo that could be processed or deleted accidentally.
 - Recognition can fall back to serial and MAC-like values printed beside unreadable barcodes.
-- The Linux release runner installs the system Qt libraries required by headless UI tests before packaging.
+- The Linux release runner installs the system Qt and multimedia libraries required by headless UI tests before packaging.
 
 ## v0.6.2 - 2026-10-07
 

@@ -105,7 +105,7 @@ jobs:
       - name: Install Qt runtime libraries for headless tests
         run: |
           sudo apt-get update
-          sudo apt-get install -y libegl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0
+          sudo apt-get install -y libegl1 libopengl0 libpulse0 libxkbcommon-x11-0 libxcb-cursor0
 
       - uses: actions/setup-python@v5
         with:
