@@ -3,11 +3,11 @@ from __future__ import annotations
 import csv
 import sqlite3
 import uuid
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
-from zoneinfo import ZoneInfo
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Callable, Iterator
+from zoneinfo import ZoneInfo
 
 
 class Database:
@@ -35,7 +35,9 @@ class Database:
         with self.connection() as db:
             current_version = int(db.execute("PRAGMA user_version").fetchone()[0])
             if current_version > SCHEMA_VERSION:
-                raise RuntimeError("The local database was created by a newer Serial Vision version.")
+                raise RuntimeError(
+                    "The local database was created by a newer Serial Vision version."
+                )
             for version, migration in MIGRATIONS:
                 if version > current_version:
                     migration(db)
@@ -66,15 +68,27 @@ class Database:
     def register_launch(self) -> int:
         now = datetime.now(UTC).isoformat()
         with self.connection() as db:
-            db.execute("INSERT OR IGNORE INTO application_state(id, launch_count, updated_at) VALUES (1, 0, ?)", (now,))
-            db.execute("UPDATE application_state SET launch_count = launch_count + 1, updated_at = ? WHERE id = 1", (now,))
-            return int(db.execute("SELECT launch_count FROM application_state WHERE id = 1").fetchone()[0])
+            db.execute(
+                "INSERT OR IGNORE INTO application_state(id, launch_count, updated_at) VALUES (1, 0, ?)",
+                (now,),
+            )
+            db.execute(
+                "UPDATE application_state SET launch_count = launch_count + 1, updated_at = ? WHERE id = 1",
+                (now,),
+            )
+            return int(
+                db.execute("SELECT launch_count FROM application_state WHERE id = 1").fetchone()[0]
+            )
 
     def ai_agents(self) -> list[sqlite3.Row]:
         with self.connection() as db:
-            return db.execute("SELECT id, name, provider, model, credential_id FROM ai_agents ORDER BY name").fetchall()
+            return db.execute(
+                "SELECT id, name, provider, model, credential_id FROM ai_agents ORDER BY name"
+            ).fetchall()
 
-    def save_ai_agent(self, name: str, provider: str, model: str, credential_id: str, agent_id: str | None = None) -> str:
+    def save_ai_agent(
+        self, name: str, provider: str, model: str, credential_id: str, agent_id: str | None = None
+    ) -> str:
         identifier = agent_id or str(uuid.uuid4())
         with self.connection() as db:
             db.execute(
@@ -97,31 +111,71 @@ class Database:
             conditions.append("service = ?")
             params.append(service)
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-        qualified_where = where.replace("device_type", "m.device_type").replace("service", "m.service")
+        qualified_where = where.replace("device_type", "m.device_type").replace(
+            "service", "m.service"
+        )
         with self.connection() as db:
-            return db.execute(f"SELECT m.*, COUNT(d.id) AS usage_count FROM device_models m LEFT JOIN devices d ON d.device_model_id = m.id {qualified_where} GROUP BY m.id ORDER BY m.name COLLATE NOCASE", params).fetchall()
+            return db.execute(
+                f"SELECT m.*, COUNT(d.id) AS usage_count FROM device_models m LEFT JOIN devices d ON d.device_model_id = m.id {qualified_where} GROUP BY m.id ORDER BY m.name COLLATE NOCASE",
+                params,
+            ).fetchall()
 
     def popular_models(self, limit: int = 10) -> list[sqlite3.Row]:
         with self.connection() as db:
-            used = db.execute("SELECT m.id, m.name, COUNT(d.id) AS usage_count FROM device_models m JOIN devices d ON d.device_model_id = m.id GROUP BY m.id, m.name ORDER BY usage_count DESC, m.name LIMIT ?", (limit,)).fetchall()
+            used = db.execute(
+                "SELECT m.id, m.name, COUNT(d.id) AS usage_count FROM device_models m JOIN devices d ON d.device_model_id = m.id GROUP BY m.id, m.name ORDER BY usage_count DESC, m.name LIMIT ?",
+                (limit,),
+            ).fetchall()
             used_ids = {row["id"] for row in used}
             placeholders = ",".join("?" for _ in DEFAULT_MODELS)
-            defaults = db.execute(f"SELECT id, name, 0 AS usage_count FROM device_models WHERE name IN ({placeholders})", DEFAULT_MODELS).fetchall()
-        fallback = sorted((row for row in defaults if row["id"] not in used_ids), key=lambda row: DEFAULT_MODELS.index(row["name"]))
+            defaults = db.execute(
+                f"SELECT id, name, 0 AS usage_count FROM device_models WHERE name IN ({placeholders})",
+                DEFAULT_MODELS,
+            ).fetchall()
+        fallback = sorted(
+            (row for row in defaults if row["id"] not in used_ids),
+            key=lambda row: DEFAULT_MODELS.index(row["name"]),
+        )
         return [*used, *fallback][:limit]
 
     def save_model(self, model_id: int | None, name: str, device_type: str, service: str) -> None:
         with self.connection() as db:
             if model_id is None:
-                db.execute("INSERT INTO device_models(name, device_type, service) VALUES (?, ?, ?)", (name, device_type, service))
+                db.execute(
+                    "INSERT INTO device_models(name, device_type, service) VALUES (?, ?, ?)",
+                    (name, device_type, service),
+                )
             else:
-                db.execute("UPDATE device_models SET name=?, device_type=?, service=? WHERE id=?", (name, device_type, service, model_id))
+                cursor = db.execute(
+                    "UPDATE device_models SET name=?, device_type=?, service=? WHERE id=?",
+                    (name, device_type, service, model_id),
+                )
+                if cursor.rowcount == 0:
+                    raise ValueError("model_missing")
+
+    def model_exists(self, model_id: int) -> bool:
+        with self.connection() as db:
+            return (
+                db.execute("SELECT 1 FROM device_models WHERE id = ?", (model_id,)).fetchone()
+                is not None
+            )
 
     def delete_model(self, model_id: int) -> None:
         with self.connection() as db:
             db.execute("DELETE FROM device_models WHERE id = ?", (model_id,))
 
-    def devices(self, search: str = "", device_type: str = "", service: str = "", date_from: str = "", date_to: str = "", model_id: int | None = None, operation: str = "", page: int = 1, per_page: int = 100) -> tuple[list[sqlite3.Row], dict[str, int] | None]:
+    def devices(
+        self,
+        search: str = "",
+        device_type: str = "",
+        service: str = "",
+        date_from: str = "",
+        date_to: str = "",
+        model_id: int | None = None,
+        operation: str = "",
+        page: int = 1,
+        per_page: int = 100,
+    ) -> tuple[list[sqlite3.Row], dict[str, int] | None]:
         conditions, params = [], []
         if search:
             conditions.append("(d.recognized_text LIKE ? OR d.contract_number LIKE ?)")
@@ -136,7 +190,7 @@ class Database:
             conditions.append("d.registered_at >= ?")
             params.append(self._utc_boundary(date_from, end=False))
         if date_to:
-            conditions.append("d.registered_at <= ?")
+            conditions.append("d.registered_at < ?")
             params.append(self._utc_boundary(date_to, end=True))
         if model_id is not None:
             conditions.append("d.device_model_id = ?")
@@ -151,27 +205,40 @@ class Database:
             {where} ORDER BY d.registered_at DESC, d.id DESC
         """
         with self.connection() as db:
-            total = int(db.execute(f"SELECT COUNT(*) FROM devices d JOIN device_models m ON m.id = d.device_model_id {where}", params).fetchone()[0])
+            total = int(
+                db.execute(
+                    f"SELECT COUNT(*) FROM devices d JOIN device_models m ON m.id = d.device_model_id {where}",
+                    params,
+                ).fetchone()[0]
+            )
             if total <= 5000:
                 return db.execute(query, params).fetchall(), None
             pages = max(1, (total + per_page - 1) // per_page)
             page = min(max(1, page), pages)
-            rows = db.execute(query + " LIMIT ? OFFSET ?", [*params, per_page, (page - 1) * per_page]).fetchall()
+            rows = db.execute(
+                query + " LIMIT ? OFFSET ?", [*params, per_page, (page - 1) * per_page]
+            ).fetchall()
             return rows, {"page": page, "per_page": per_page, "total": total, "pages": pages}
 
     @staticmethod
     def _utc_boundary(value: str, end: bool) -> str:
-        local = datetime.fromisoformat(f"{value}T23:59:59" if end else f"{value}T00:00:00")
+        local = datetime.fromisoformat(f"{value}T00:00:00")
+        if end:
+            local += timedelta(days=1)
         return local.replace(tzinfo=ZoneInfo("Europe/Kyiv")).astimezone(UTC).isoformat()
 
     def source_image_path(self, device_id: int) -> str | None:
         with self.connection() as db:
-            row = db.execute("SELECT source_image_path FROM devices WHERE id = ?", (device_id,)).fetchone()
+            row = db.execute(
+                "SELECT source_image_path FROM devices WHERE id = ?", (device_id,)
+            ).fetchone()
         return None if row is None else row["source_image_path"]
 
     def device_recognized_text(self, device_id: int) -> str | None:
         with self.connection() as db:
-            row = db.execute("SELECT recognized_text FROM devices WHERE id = ?", (device_id,)).fetchone()
+            row = db.execute(
+                "SELECT recognized_text FROM devices WHERE id = ?", (device_id,)
+            ).fetchone()
         return None if row is None else row["recognized_text"]
 
     def save_device(self, device_id: int | None, data: dict[str, object]) -> None:
@@ -185,11 +252,19 @@ class Database:
         )
         with self.connection() as db:
             if device_id is None:
-                db.execute("""INSERT INTO devices(recognized_text, contract_number, operation_type, source_image_path, device_model_id, registered_at)
-                    VALUES (?, ?, ?, ?, ?, ?)""", values)
+                db.execute(
+                    """INSERT INTO devices(recognized_text, contract_number, operation_type, source_image_path, device_model_id, registered_at)
+                    VALUES (?, ?, ?, ?, ?, ?)""",
+                    values,
+                )
             else:
-                db.execute("""UPDATE devices SET recognized_text=?, contract_number=?, operation_type=?, source_image_path=?, device_model_id=?, registered_at=?
-                    WHERE id=?""", (*values, device_id))
+                cursor = db.execute(
+                    """UPDATE devices SET recognized_text=?, contract_number=?, operation_type=?, source_image_path=?, device_model_id=?, registered_at=?
+                    WHERE id=?""",
+                    (*values, device_id),
+                )
+                if cursor.rowcount == 0:
+                    raise ValueError("record_missing")
 
     def delete_device(self, device_id: int) -> None:
         with self.connection() as db:
@@ -198,49 +273,125 @@ class Database:
     def export_csv(self, destination: Path, rows: list[sqlite3.Row]) -> None:
         with destination.open("w", newline="", encoding="cp1251", errors="replace") as file:
             writer = csv.writer(file, delimiter=";")
-            writer.writerow(["Дата", "Номер договору", "Операція", "Текст", "Модель", "Тип", "Послуга", "Шлях до фото"])
+            writer.writerow(
+                [
+                    "Дата",
+                    "Номер договору",
+                    "Операція",
+                    "Текст",
+                    "Модель",
+                    "Тип",
+                    "Послуга",
+                    "Шлях до фото",
+                ]
+            )
             for row in rows:
-                writer.writerow([row["registered_at"], row["contract_number"] or "", row["operation_type"], row["recognized_text"], row["model_name"], row["device_type"], row["service"], row["source_image_path"] or ""])
+                writer.writerow(
+                    [
+                        row["registered_at"],
+                        row["contract_number"] or "",
+                        row["operation_type"],
+                        row["recognized_text"],
+                        row["model_name"],
+                        row["device_type"],
+                        row["service"],
+                        row["source_image_path"] or "",
+                    ]
+                )
 
     def statistics_rows(self) -> list[sqlite3.Row]:
         with self.connection() as db:
-            return db.execute("SELECT d.registered_at, d.operation_type, m.service, m.name AS model_name FROM devices d JOIN device_models m ON m.id = d.device_model_id").fetchall()
+            return db.execute(
+                "SELECT d.registered_at, d.operation_type, m.service, m.name AS model_name FROM devices d JOIN device_models m ON m.id = d.device_model_id"
+            ).fetchall()
 
     def statistics(self) -> list[sqlite3.Row]:
         with self.connection() as db:
             return db.execute("""SELECT substr(d.registered_at, 1, 7) AS period, d.operation_type, COUNT(*) AS total
                 FROM devices d GROUP BY period, d.operation_type ORDER BY period""").fetchall()
 
-
-    def create_api_key(self, name: str, note: str, token_hash: str, token_prefix: str, expires_at: str | None, min_interval_ms: int) -> str:
-        identifier = str(uuid.uuid4()); now = datetime.now(UTC).isoformat()
+    def create_api_key(
+        self,
+        name: str,
+        note: str,
+        token_hash: str,
+        token_prefix: str,
+        expires_at: str | None,
+        min_interval_ms: int,
+    ) -> str:
+        identifier = str(uuid.uuid4())
+        now = datetime.now(UTC).isoformat()
         with self.connection() as db:
-            db.execute("INSERT INTO api_keys(id, name, note, token_hash, token_prefix, expires_at, min_interval_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (identifier, name, note, token_hash, token_prefix, expires_at, min_interval_ms, now))
+            db.execute(
+                "INSERT INTO api_keys(id, name, note, token_hash, token_prefix, expires_at, min_interval_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    identifier,
+                    name,
+                    note,
+                    token_hash,
+                    token_prefix,
+                    expires_at,
+                    min_interval_ms,
+                    now,
+                ),
+            )
         return identifier
 
     def api_keys(self) -> list[sqlite3.Row]:
         with self.connection() as db:
-            return db.execute("SELECT id, name, note, token_prefix, expires_at, min_interval_ms, created_at, revoked_at, last_used_at FROM api_keys ORDER BY created_at DESC").fetchall()
+            return db.execute(
+                "SELECT id, name, note, token_prefix, expires_at, min_interval_ms, created_at, revoked_at, last_used_at FROM api_keys ORDER BY created_at DESC"
+            ).fetchall()
 
     def api_key_by_hash(self, token_hash: str) -> sqlite3.Row | None:
         with self.connection() as db:
-            return db.execute("SELECT * FROM api_keys WHERE token_hash = ?", (token_hash,)).fetchone()
+            return db.execute(
+                "SELECT * FROM api_keys WHERE token_hash = ?", (token_hash,)
+            ).fetchone()
 
     def revoke_api_key(self, key_id: str) -> None:
         with self.connection() as db:
-            db.execute("UPDATE api_keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", (datetime.now(UTC).isoformat(), key_id))
+            db.execute(
+                "UPDATE api_keys SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+                (datetime.now(UTC).isoformat(), key_id),
+            )
 
     def touch_api_key(self, key_id: str) -> None:
         with self.connection() as db:
-            db.execute("UPDATE api_keys SET last_used_at = ? WHERE id = ?", (datetime.now(UTC).isoformat(), key_id))
+            db.execute(
+                "UPDATE api_keys SET last_used_at = ? WHERE id = ?",
+                (datetime.now(UTC).isoformat(), key_id),
+            )
 
-    def audit_api(self, key_id: str | None, method: str, path: str, status: int, client_address: str, detail: str = "") -> None:
+    def audit_api(
+        self,
+        key_id: str | None,
+        method: str,
+        path: str,
+        status: int,
+        client_address: str,
+        detail: str = "",
+    ) -> None:
         with self.connection() as db:
-            db.execute("INSERT INTO api_audit(api_key_id, requested_at, method, path, status, client_address, detail) VALUES (?, ?, ?, ?, ?, ?, ?)", (key_id, datetime.now(UTC).isoformat(), method, path, status, client_address, detail[:500]))
+            db.execute(
+                "INSERT INTO api_audit(api_key_id, requested_at, method, path, status, client_address, detail) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    key_id,
+                    datetime.now(UTC).isoformat(),
+                    method,
+                    path,
+                    status,
+                    client_address,
+                    detail[:500],
+                ),
+            )
 
     def api_audit(self, limit: int = 200) -> list[sqlite3.Row]:
         with self.connection() as db:
-            return db.execute("SELECT a.*, k.name AS key_name, k.token_prefix FROM api_audit a LEFT JOIN api_keys k ON k.id = a.api_key_id ORDER BY a.id DESC LIMIT ?", (limit,)).fetchall()
+            return db.execute(
+                "SELECT a.*, k.name AS key_name, k.token_prefix FROM api_audit a LEFT JOIN api_keys k ON k.id = a.api_key_id ORDER BY a.id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
 
 
 def migrate_001_initial_schema(db: sqlite3.Connection) -> None:
@@ -288,8 +439,12 @@ def migrate_002_device_search_index(db: sqlite3.Connection) -> None:
 
 
 def migrate_003_local_api(db: sqlite3.Connection) -> None:
-    db.execute("CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, name TEXT NOT NULL, note TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, token_prefix TEXT NOT NULL, expires_at TEXT, created_at TEXT NOT NULL, revoked_at TEXT, last_used_at TEXT)")
-    db.execute("CREATE TABLE IF NOT EXISTS api_audit (id INTEGER PRIMARY KEY, api_key_id TEXT REFERENCES api_keys(id) ON DELETE SET NULL, requested_at TEXT NOT NULL, method TEXT NOT NULL, path TEXT NOT NULL, status INTEGER NOT NULL, client_address TEXT NOT NULL, detail TEXT NOT NULL)")
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, name TEXT NOT NULL, note TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, token_prefix TEXT NOT NULL, expires_at TEXT, created_at TEXT NOT NULL, revoked_at TEXT, last_used_at TEXT)"
+    )
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS api_audit (id INTEGER PRIMARY KEY, api_key_id TEXT REFERENCES api_keys(id) ON DELETE SET NULL, requested_at TEXT NOT NULL, method TEXT NOT NULL, path TEXT NOT NULL, status INTEGER NOT NULL, client_address TEXT NOT NULL, detail TEXT NOT NULL)"
+    )
     db.execute("CREATE INDEX IF NOT EXISTS api_audit_requested_at_idx ON api_audit(requested_at)")
 
 

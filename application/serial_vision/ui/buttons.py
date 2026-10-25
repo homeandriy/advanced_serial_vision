@@ -6,7 +6,6 @@ from PySide6.QtCore import QSize
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QPushButton, QStyle, QToolButton, QWidget
 
-
 BUTTONS: dict[str, QStyle.StandardPixmap] = {
     "close": QStyle.StandardPixmap.SP_DialogCloseButton,
     "copy": QStyle.StandardPixmap.SP_FileDialogDetailedView,
@@ -93,7 +92,11 @@ def apply_button_icons(style: str) -> None:
 
 def icon_for(parent: QWidget, action: str) -> QIcon:
     app = QApplication.instance()
-    style = str(app.property("icon_style")) if app is not None and app.property("icon_style") else "system"
+    style = (
+        str(app.property("icon_style"))
+        if app is not None and app.property("icon_style")
+        else "system"
+    )
     icon_root = Path(__file__).parents[1] / "assets" / "icons"
     asset = icon_root / style / f"{action}.svg"
     if style != "system" and asset.is_file():
@@ -105,7 +108,11 @@ def icon_for(parent: QWidget, action: str) -> QIcon:
 
 def _set_icon(control: QPushButton | QToolButton, action: str) -> None:
     app = QApplication.instance()
-    style = str(app.property("icon_style")) if app is not None and app.property("icon_style") else "system"
+    style = (
+        str(app.property("icon_style"))
+        if app is not None and app.property("icon_style")
+        else "system"
+    )
     control.setProperty("icon_style", style)
     control.setIconSize(icon_size(style))
     control.setIcon(icon_for(control, action))

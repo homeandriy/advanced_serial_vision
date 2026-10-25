@@ -1,0 +1,59 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.11'
+          - os: ubuntu-latest
+            python: '3.13'
+          - os: windows-latest
+            python: '3.11'
+    env:
+      QT_QPA_PLATFORM: offscreen
+      UV_PYTHON: ${{ matrix.python }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.10'
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libopengl0 libpulse0 libxkbcommon-x11-0 libxcb-cursor0
+      - name: Check dependency lock and sync environment
+        run: |
+          uv lock --check
+          uv sync --locked --python ${{ matrix.python }}
+      - name: Check syntax
+        run: uv run --locked python -m compileall -q application
+      - name: Ruff lint
+        run: uv run --locked ruff check .
+      - name: Ruff formatting
+        run: uv run --locked ruff format --check .
+      - name: Core type checks
+        run: uv run --locked mypy
+      - name: Tests
+        run: uv run --locked python -m unittest discover -s application/tests -v

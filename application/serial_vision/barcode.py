@@ -5,8 +5,12 @@ from pathlib import Path
 
 from PIL import Image
 
-from serial_vision.recognition_strategies import OriginalStrategy, RecognitionOptions, fallback_strategies, normalized_image
-
+from serial_vision.recognition_strategies import (
+    OriginalStrategy,
+    RecognitionOptions,
+    fallback_strategies,
+    normalized_image,
+)
 
 _PRINTED_CODE_PATTERNS = (
     re.compile(r"(?<![A-Z0-9])(?:[0-9A-F]{2}){6}(?![A-Z0-9])"),
@@ -27,7 +31,11 @@ def extract_printed_codes(text: str) -> list[str]:
 
 
 class BarcodeRecognizer:
-    def __init__(self, module_unavailable_message: str = "Модуль розпізнавання штрихкодів не встановлено.", options: RecognitionOptions | None = None) -> None:
+    def __init__(
+        self,
+        module_unavailable_message: str = "barcode_module_unavailable",
+        options: RecognitionOptions | None = None,
+    ) -> None:
         self.module_unavailable_message = module_unavailable_message
         self.options = options or RecognitionOptions()
 

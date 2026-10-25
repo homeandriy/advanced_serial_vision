@@ -8,13 +8,27 @@ from typing import Any
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QCloseEvent, QMouseEvent, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QFormLayout, QGraphicsItem, QGraphicsRectItem,
-    QGridLayout, QGroupBox, QHBoxLayout, QLabel, QMessageBox, QSlider,
-    QSpinBox, QSplitter, QTextEdit, QVBoxLayout, QWidget,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFormLayout,
+    QGraphicsItem,
+    QGraphicsRectItem,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QSlider,
+    QSpinBox,
+    QSplitter,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 from serial_vision.application_service import SerialVisionService
-from serial_vision.i18n import t
+from serial_vision.i18n import error_message, t
 from serial_vision.image_editing import ImageEditSession
 from serial_vision.ui.buttons import button
 from serial_vision.ui.photo_preview import PhotoPreview
@@ -26,10 +40,14 @@ class CropPreview(PhotoPreview):
     rotation_requested = Signal(int)
     _HANDLE_NAMES = ("nw", "ne", "sw", "se", "n", "s", "w", "e")
     _CURSORS = {
-        "nw": Qt.CursorShape.SizeFDiagCursor, "se": Qt.CursorShape.SizeFDiagCursor,
-        "ne": Qt.CursorShape.SizeBDiagCursor, "sw": Qt.CursorShape.SizeBDiagCursor,
-        "n": Qt.CursorShape.SizeVerCursor, "s": Qt.CursorShape.SizeVerCursor,
-        "w": Qt.CursorShape.SizeHorCursor, "e": Qt.CursorShape.SizeHorCursor,
+        "nw": Qt.CursorShape.SizeFDiagCursor,
+        "se": Qt.CursorShape.SizeFDiagCursor,
+        "ne": Qt.CursorShape.SizeBDiagCursor,
+        "sw": Qt.CursorShape.SizeBDiagCursor,
+        "n": Qt.CursorShape.SizeVerCursor,
+        "s": Qt.CursorShape.SizeVerCursor,
+        "w": Qt.CursorShape.SizeHorCursor,
+        "e": Qt.CursorShape.SizeHorCursor,
         "move": Qt.CursorShape.SizeAllCursor,
     }
 
@@ -75,7 +93,10 @@ class CropPreview(PhotoPreview):
             return
         self._fit = True
         self.resetTransform()
-        self.fitInView(self._photo.sceneBoundingRect().adjusted(-24, -48, 24, 24), Qt.AspectRatioMode.KeepAspectRatio)
+        self.fitInView(
+            self._photo.sceneBoundingRect().adjusted(-24, -48, 24, 24),
+            Qt.AspectRatioMode.KeepAspectRatio,
+        )
 
     def _rotation_handle_position(self) -> QPoint:
         bounds = self._photo.sceneBoundingRect()
@@ -84,11 +105,13 @@ class CropPreview(PhotoPreview):
 
     def _rotation_handle_at(self, position: QPoint) -> bool:
         handle = self._rotation_handle_position()
-        return (position.x() - handle.x()) ** 2 + (position.y() - handle.y()) ** 2 <= 12 ** 2
+        return (position.x() - handle.x()) ** 2 + (position.y() - handle.y()) ** 2 <= 12**2
 
     def _preview_rotation(self, point: QPointF) -> None:
         center = self._photo.mapToScene(self._photo.boundingRect().center())
-        degrees = round(math.degrees(math.atan2(point.y() - center.y(), point.x() - center.x())) + 90)
+        degrees = round(
+            math.degrees(math.atan2(point.y() - center.y(), point.x() - center.x())) + 90
+        )
         self._rotation_angle = (degrees + 180) % 360 - 180
         self._photo.setRotation(self._rotation_angle)
         self._scene.setSceneRect(self._photo.sceneBoundingRect().adjusted(-24, -48, 24, 24))
@@ -136,7 +159,9 @@ class CropPreview(PhotoPreview):
             self._selection = self._scene.addRect(rectangle, pen, QBrush(fill))
             self._selection.setZValue(1)
             for name in self._HANDLE_NAMES:
-                handle = self._scene.addRect(QRectF(-5, -5, 10, 10), QPen(self.palette().base().color()), QBrush(color))
+                handle = self._scene.addRect(
+                    QRectF(-5, -5, 10, 10), QPen(self.palette().base().color()), QBrush(color)
+                )
                 handle.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations)
                 handle.setZValue(2)
                 self._handles[name] = handle
@@ -148,22 +173,34 @@ class CropPreview(PhotoPreview):
         x, middle_x, right = rectangle.left(), rectangle.center().x(), rectangle.right()
         y, middle_y, bottom = rectangle.top(), rectangle.center().y(), rectangle.bottom()
         for name, point in {
-            "nw": (x, y), "ne": (right, y), "sw": (x, bottom), "se": (right, bottom),
-            "n": (middle_x, y), "s": (middle_x, bottom),
-            "w": (x, middle_y), "e": (right, middle_y),
+            "nw": (x, y),
+            "ne": (right, y),
+            "sw": (x, bottom),
+            "se": (right, bottom),
+            "n": (middle_x, y),
+            "s": (middle_x, bottom),
+            "w": (x, middle_y),
+            "e": (right, middle_y),
         }.items():
             self._handles[name].setPos(*point)
 
     def _handle_at(self, position: QPoint) -> str | None:
         for name in self._HANDLE_NAMES:
             center = self.mapFromScene(self._handles[name].pos()) if name in self._handles else None
-            if center is not None and abs(position.x() - center.x()) <= 8 and abs(position.y() - center.y()) <= 8:
+            if (
+                center is not None
+                and abs(position.x() - center.x()) <= 8
+                and abs(position.y() - center.y()) <= 8
+            ):
                 return name
         return None
 
     def _bounded(self, point: QPointF) -> QPointF:
         bounds = self._photo.boundingRect()
-        return QPointF(max(bounds.left(), min(point.x(), bounds.right())), max(bounds.top(), min(point.y(), bounds.bottom())))
+        return QPointF(
+            max(bounds.left(), min(point.x(), bounds.right())),
+            max(bounds.top(), min(point.y(), bounds.bottom())),
+        )
 
     def _dragged_rectangle(self, point: QPointF) -> QRectF:
         point = self._bounded(point)
@@ -172,10 +209,21 @@ class CropPreview(PhotoPreview):
         rectangle = self._drag_rect
         bounds = self._photo.boundingRect()
         if self._drag_mode == "move":
-            dx = max(bounds.left() - rectangle.left(), min(point.x() - self._drag_start.x(), bounds.right() - rectangle.right()))
-            dy = max(bounds.top() - rectangle.top(), min(point.y() - self._drag_start.y(), bounds.bottom() - rectangle.bottom()))
+            dx = max(
+                bounds.left() - rectangle.left(),
+                min(point.x() - self._drag_start.x(), bounds.right() - rectangle.right()),
+            )
+            dy = max(
+                bounds.top() - rectangle.top(),
+                min(point.y() - self._drag_start.y(), bounds.bottom() - rectangle.bottom()),
+            )
             return rectangle.translated(dx, dy)
-        left, top, right, bottom = rectangle.left(), rectangle.top(), rectangle.right(), rectangle.bottom()
+        left, top, right, bottom = (
+            rectangle.left(),
+            rectangle.top(),
+            rectangle.right(),
+            rectangle.bottom(),
+        )
         if self._drag_mode and "w" in self._drag_mode:
             left = max(bounds.left(), min(point.x(), right - 2))
         if self._drag_mode and "e" in self._drag_mode:
@@ -187,7 +235,11 @@ class CropPreview(PhotoPreview):
         return QRectF(QPointF(left, top), QPointF(right, bottom))
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if self._selection_enabled and event.button() == Qt.MouseButton.LeftButton and self._photo is not None:
+        if (
+            self._selection_enabled
+            and event.button() == Qt.MouseButton.LeftButton
+            and self._photo is not None
+        ):
             if self._rotation_handle_at(event.position().toPoint()):
                 self._rotating = True
                 self.clear_selection()
@@ -228,7 +280,11 @@ class CropPreview(PhotoPreview):
                 event.accept()
                 return
             mode = self._handle_at(position)
-            if mode is None and self._selection is not None and self._selection.rect().contains(self.mapToScene(position)):
+            if (
+                mode is None
+                and self._selection is not None
+                and self._selection.rect().contains(self.mapToScene(position))
+            ):
                 mode = "move"
             if mode is None:
                 self.viewport().unsetCursor()
@@ -309,7 +365,9 @@ class ImageEditorDialog(QDialog):
         self.rotation_degrees.setAccessibleName(self.tr("editor_rotation_angle"))
         controls.addWidget(self.rotation_degrees)
         apply_rotation = button(left, "rotate", self.tr("editor_apply_rotation"))
-        apply_rotation.clicked.connect(lambda: self.rotate_by_degrees(self.rotation_degrees.value()))
+        apply_rotation.clicked.connect(
+            lambda: self.rotate_by_degrees(self.rotation_degrees.value())
+        )
         controls.addWidget(apply_rotation)
         controls.addStretch()
         left_layout.addLayout(controls)
@@ -346,7 +404,9 @@ class ImageEditorDialog(QDialog):
         left_layout.addLayout(resize_row)
 
         self.advanced_toggle = QCheckBox(self.tr("editor_advanced"), left)
-        self.advanced_toggle.toggled.connect(lambda checked: self.advanced_group.setVisible(checked))
+        self.advanced_toggle.toggled.connect(
+            lambda checked: self.advanced_group.setVisible(checked)
+        )
         left_layout.addWidget(self.advanced_toggle)
         self.advanced_group = QGroupBox(self.tr("editor_advanced"), left)
         advanced_form = QFormLayout(self.advanced_group)
@@ -392,7 +452,15 @@ class ImageEditorDialog(QDialog):
             field = QTextEdit(right)
             field.setObjectName("recognitionResult")
             field.setReadOnly(key != "ocr")
-            field.setPlainText(self.tr({"ocr": "ocr_empty", "barcodes": "barcode_empty", "ai": "editor_ai_not_selected"}[key]))
+            field.setPlainText(
+                self.tr(
+                    {
+                        "ocr": "ocr_empty",
+                        "barcodes": "barcode_empty",
+                        "ai": "editor_ai_not_selected",
+                    }[key]
+                )
+            )
             right_layout.addWidget(field, 1)
             self.results[key] = field
         body.addWidget(right)
@@ -415,7 +483,18 @@ class ImageEditorDialog(QDialog):
         close.clicked.connect(self.close)
         footer.addWidget(close)
         layout.addLayout(footer)
-        self._edit_controls = [rotate, reset, self.rotation_degrees, apply_rotation, apply_crop, self.resize_percent, apply_resize, self.advanced_toggle, *self.crop_values.values(), *self.adjustments.values()]
+        self._edit_controls = [
+            rotate,
+            reset,
+            self.rotation_degrees,
+            apply_rotation,
+            apply_crop,
+            self.resize_percent,
+            apply_resize,
+            self.advanced_toggle,
+            *self.crop_values.values(),
+            *self.adjustments.values(),
+        ]
 
         self._preview_timer = QTimer(self)
         self._preview_timer.setSingleShot(True)
@@ -430,13 +509,20 @@ class ImageEditorDialog(QDialog):
         width, height = self.session.size
         for control in self.crop_values.values():
             control.setMaximum(max(12000, width, height))
-        for key, value in (("editor_x", 0), ("editor_y", 0), ("editor_width", width), ("editor_height", height)):
+        for key, value in (
+            ("editor_x", 0),
+            ("editor_y", 0),
+            ("editor_width", width),
+            ("editor_height", height),
+        ):
             self.crop_values[key].setValue(value)
         self.preview.clear_selection()
 
     def refresh_preview(self, preserve_crop: bool = True) -> None:
         prior = self._crop_values() if preserve_crop else None
-        self.session.set_adjustments(**{key: control.value() for key, control in self.adjustments.items()})
+        self.session.set_adjustments(
+            **{key: control.value() for key, control in self.adjustments.items()}
+        )
         image_data, self._preview_size = self.session.preview_png()
         if not self.preview.set_preview(image_data):
             self.status.setText(self.tr("editor_preview_failed"))
@@ -460,9 +546,18 @@ class ImageEditorDialog(QDialog):
         preview_width, preview_height = self._preview_size
         left = max(0, min(image_width - 2, round(rectangle.left() * image_width / preview_width)))
         top = max(0, min(image_height - 2, round(rectangle.top() * image_height / preview_height)))
-        right = min(image_width, max(left + 2, round(rectangle.right() * image_width / preview_width)))
-        bottom = min(image_height, max(top + 2, round(rectangle.bottom() * image_height / preview_height)))
-        for key, value in (("editor_x", left), ("editor_y", top), ("editor_width", right - left), ("editor_height", bottom - top)):
+        right = min(
+            image_width, max(left + 2, round(rectangle.right() * image_width / preview_width))
+        )
+        bottom = min(
+            image_height, max(top + 2, round(rectangle.bottom() * image_height / preview_height))
+        )
+        for key, value in (
+            ("editor_x", left),
+            ("editor_y", top),
+            ("editor_width", right - left),
+            ("editor_height", bottom - top),
+        ):
             self.crop_values[key].setValue(value)
 
     def show_numeric_crop(self) -> None:
@@ -473,25 +568,35 @@ class ImageEditorDialog(QDialog):
             self.status.setText(self.tr("editor_crop_invalid"))
             return
         preview_width, preview_height = self._preview_size
-        self.preview.set_selection(QRectF(x * preview_width / width, y * preview_height / height, crop_width * preview_width / width, crop_height * preview_height / height))
+        self.preview.set_selection(
+            QRectF(
+                x * preview_width / width,
+                y * preview_height / height,
+                crop_width * preview_width / width,
+                crop_height * preview_height / height,
+            )
+        )
         self.status.setText(self.tr("editor_ready"))
 
     def _crop_values(self) -> tuple[int, int, int, int]:
-        return tuple(self.crop_values[key].value() for key in ("editor_x", "editor_y", "editor_width", "editor_height"))
+        return tuple(
+            self.crop_values[key].value()
+            for key in ("editor_x", "editor_y", "editor_width", "editor_height")
+        )
 
     def apply_crop(self) -> None:
         try:
             self.session.crop(*self._crop_values())
-        except ValueError:
-            self.status.setText(self.tr("editor_crop_invalid"))
+        except ValueError as error:
+            self.status.setText(error_message(self.locale, error))
             return
         self.refresh_preview(False)
 
     def apply_resize(self) -> None:
         try:
             self.session.resize(self.resize_percent.value())
-        except ValueError:
-            self.status.setText(self.tr("editor_resize_invalid"))
+        except ValueError as error:
+            self.status.setText(error_message(self.locale, error))
             return
         self.resize_percent.setValue(100)
         self.refresh_preview(False)
@@ -502,8 +607,8 @@ class ImageEditorDialog(QDialog):
     def rotate_by_degrees(self, degrees: int) -> None:
         try:
             self.session.rotate_degrees(degrees)
-        except ValueError:
-            self.status.setText(self.tr("editor_rotation_invalid"))
+        except ValueError as error:
+            self.status.setText(error_message(self.locale, error))
             self.refresh_preview()
             return
         self.refresh_preview(False)
@@ -533,20 +638,32 @@ class ImageEditorDialog(QDialog):
         if self._busy or self._workers:
             return
         self._preview_timer.stop()
-        self.session.set_adjustments(**{key: control.value() for key, control in self.adjustments.items()})
+        self.session.set_adjustments(
+            **{key: control.value() for key, control in self.adjustments.items()}
+        )
         try:
             self.session.save_snapshot(self._snapshot)
         except (OSError, ValueError) as error:
-            QMessageBox.warning(self, self.tr("error"), self.tr("editor_snapshot_failed", error=str(error)))
+            QMessageBox.warning(
+                self, self.tr("error"), self.tr("editor_snapshot_failed", error=str(error))
+            )
             return
         self._set_busy(True)
         self.results["ocr"].setPlainText(self.tr("recognizing"))
         self.results["barcodes"].setPlainText(self.tr("recognizing"))
-        self.results["ai"].setPlainText(self.tr("editor_ai_waiting") if self.ai_profile.currentData() else self.tr("editor_ai_not_selected"))
+        self.results["ai"].setPlainText(
+            self.tr("editor_ai_waiting")
+            if self.ai_profile.currentData()
+            else self.tr("editor_ai_not_selected")
+        )
         self.status.setText(self._stage_label("ocr"))
         worker = self.local_worker_type(
-            self._snapshot, self.language, self.tr("barcode_ocr_fallback"),
-            self.tr("barcode_module_unavailable"), self.service.recognition_options(), self,
+            self._snapshot,
+            self.language,
+            self.tr("barcode_ocr_fallback"),
+            self.tr("barcode_module_unavailable"),
+            self.service.recognition_options(),
+            self,
         )
         self._workers.add(worker)
         worker.stage.connect(self.local_stage)
@@ -593,7 +710,7 @@ class ImageEditorDialog(QDialog):
 
     def ai_failed(self, error: str) -> None:
         if not self._closing:
-            self.results["ai"].setPlainText(error)
+            self.results["ai"].setPlainText(error_message(self.locale, error))
             self.status.setText(self.tr("editor_ai_failed"))
 
     def _worker_finished(self, worker: Any) -> None:

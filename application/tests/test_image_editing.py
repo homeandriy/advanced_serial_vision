@@ -12,12 +12,11 @@ from PIL import Image
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QPushButton, QSlider
-
 from serial_vision.application_service import SerialVisionService
 from serial_vision.database import Database
 from serial_vision.image_editing import ImageEditSession
 from serial_vision.ui.image_editor import ImageEditorDialog
-from serial_vision.ui.main_window import AiRecognitionWorker, RecognitionWorker
+from serial_vision.ui.workers import AiRecognitionWorker, RecognitionWorker
 
 
 class ImageEditingTest(unittest.TestCase):
@@ -71,7 +70,9 @@ class ImageEditingTest(unittest.TestCase):
     def test_editor_uses_snapshot_and_does_not_start_ai_by_default(self) -> None:
         database = Database(self.root / "database.sqlite3")
         service = SerialVisionService(database)
-        dialog = ImageEditorDialog(service, self.source, "uk", "eng", RecognitionWorker, AiRecognitionWorker)
+        dialog = ImageEditorDialog(
+            service, self.source, "uk", "eng", RecognitionWorker, AiRecognitionWorker
+        )
         self.assertEqual((0, 0, 400, 200), dialog._crop_values())
         dialog.crop_values["editor_x"].setValue(10)
         dialog.crop_values["editor_y"].setValue(10)
@@ -80,7 +81,10 @@ class ImageEditingTest(unittest.TestCase):
         dialog.apply_crop()
         self.assertEqual((100, 50), dialog.session.size)
         self.assertEqual("", dialog.ai_profile.currentData())
-        with patch.object(RecognitionWorker, "start"), patch.object(AiRecognitionWorker, "start") as ai_start:
+        with (
+            patch.object(RecognitionWorker, "start"),
+            patch.object(AiRecognitionWorker, "start") as ai_start,
+        ):
             dialog.recognize()
             self.assertTrue(dialog._snapshot.is_file())
             with Image.open(dialog._snapshot) as image:
@@ -98,16 +102,32 @@ class ImageEditingTest(unittest.TestCase):
 
     def test_mouse_selection_maps_to_source_pixels(self) -> None:
         database = Database(self.root / "database.sqlite3")
-        dialog = ImageEditorDialog(SerialVisionService(database), self.source, "en", "eng", RecognitionWorker, AiRecognitionWorker)
+        dialog = ImageEditorDialog(
+            SerialVisionService(database),
+            self.source,
+            "en",
+            "eng",
+            RecognitionWorker,
+            AiRecognitionWorker,
+        )
         preview_width, preview_height = dialog._preview_size
-        dialog.set_crop_from_selection(QRectF(preview_width / 4, preview_height / 4, preview_width / 2, preview_height / 2))
+        dialog.set_crop_from_selection(
+            QRectF(preview_width / 4, preview_height / 4, preview_width / 2, preview_height / 2)
+        )
         self.assertEqual((100, 50, 200, 100), dialog._crop_values())
         dialog.close()
         self.app.processEvents()
 
     def test_crop_handles_resize_and_move_existing_selection(self) -> None:
         database = Database(self.root / "database.sqlite3")
-        dialog = ImageEditorDialog(SerialVisionService(database), self.source, "en", "eng", RecognitionWorker, AiRecognitionWorker)
+        dialog = ImageEditorDialog(
+            SerialVisionService(database),
+            self.source,
+            "en",
+            "eng",
+            RecognitionWorker,
+            AiRecognitionWorker,
+        )
         dialog.show()
         self.app.processEvents()
         dialog.preview.set_selection(QRectF(100, 50, 100, 80))
@@ -137,10 +157,19 @@ class ImageEditingTest(unittest.TestCase):
 
     def test_rotation_handle_rotates_photo_and_advanced_controls_are_sliders(self) -> None:
         database = Database(self.root / "database.sqlite3")
-        dialog = ImageEditorDialog(SerialVisionService(database), self.source, "en", "eng", RecognitionWorker, AiRecognitionWorker)
+        dialog = ImageEditorDialog(
+            SerialVisionService(database),
+            self.source,
+            "en",
+            "eng",
+            RecognitionWorker,
+            AiRecognitionWorker,
+        )
         dialog.show()
         self.app.processEvents()
-        self.assertTrue(all(isinstance(control, QSlider) for control in dialog.adjustments.values()))
+        self.assertTrue(
+            all(isinstance(control, QSlider) for control in dialog.adjustments.values())
+        )
         dialog.adjustments["contrast"].setValue(135)
         self.assertEqual("135 %", dialog.adjustment_values["contrast"].text())
         dialog.refresh_preview()
@@ -160,8 +189,11 @@ class ImageEditingTest(unittest.TestCase):
         self.assertEqual(0, dialog.rotation_degrees.value())
         previous_size = dialog.session.size
         dialog.rotation_degrees.setValue(30)
-        angle_button = next(control for control in dialog.findChildren(QPushButton)
-                            if control.text() == dialog.tr("editor_apply_rotation"))
+        angle_button = next(
+            control
+            for control in dialog.findChildren(QPushButton)
+            if control.text() == dialog.tr("editor_apply_rotation")
+        )
         angle_button.click()
         self.assertNotEqual(previous_size, dialog.session.size)
         self.assertEqual(0, dialog.rotation_degrees.value())
@@ -171,16 +203,28 @@ class ImageEditingTest(unittest.TestCase):
 
     def test_ai_only_starts_after_explicit_profile_selection(self) -> None:
         database = Database(self.root / "database.sqlite3")
-        dialog = ImageEditorDialog(SerialVisionService(database), self.source, "uk", "eng", RecognitionWorker, AiRecognitionWorker)
+        dialog = ImageEditorDialog(
+            SerialVisionService(database),
+            self.source,
+            "uk",
+            "eng",
+            RecognitionWorker,
+            AiRecognitionWorker,
+        )
         dialog.ai_profile.addItem("Test profile", "profile-id")
         dialog.ai_profile.setCurrentIndex(1)
-        with patch.object(RecognitionWorker, "start"), patch.object(AiRecognitionWorker, "start") as ai_start:
+        with (
+            patch.object(RecognitionWorker, "start"),
+            patch.object(AiRecognitionWorker, "start") as ai_start,
+        ):
             dialog.recognize()
             local_worker = next(iter(dialog._workers))
             local_worker.completed.emit(str(dialog._snapshot), "OCR", "BARCODE", "")
             self.app.processEvents()
             ai_start.assert_called_once()
-            ai_worker = next(worker for worker in dialog._workers if isinstance(worker, AiRecognitionWorker))
+            ai_worker = next(
+                worker for worker in dialog._workers if isinstance(worker, AiRecognitionWorker)
+            )
             ai_worker.completed.emit("AI RESULT")
             ai_worker.finished.emit()
             local_worker.finished.emit()
@@ -191,7 +235,14 @@ class ImageEditingTest(unittest.TestCase):
 
     def test_closing_during_recognition_waits_to_remove_snapshot(self) -> None:
         database = Database(self.root / "database.sqlite3")
-        dialog = ImageEditorDialog(SerialVisionService(database), self.source, "uk", "eng", RecognitionWorker, AiRecognitionWorker)
+        dialog = ImageEditorDialog(
+            SerialVisionService(database),
+            self.source,
+            "uk",
+            "eng",
+            RecognitionWorker,
+            AiRecognitionWorker,
+        )
         with patch.object(RecognitionWorker, "start"):
             dialog.recognize()
             snapshot = dialog._snapshot

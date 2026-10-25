@@ -3,14 +3,16 @@ from __future__ import annotations
 import hashlib
 import json
 import mimetypes
+import sqlite3
 import threading
-from pathlib import Path
 import time
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
 from serial_vision.application_service import SerialVisionService
+from serial_vision.i18n import error_message, t
 
 
 class LocalApiServer:
@@ -25,67 +27,103 @@ class LocalApiServer:
         if self.server is not None:
             return
         owner = self
+
         class Handler(BaseHTTPRequestHandler):
-            def log_message(self, format: str, *args: object) -> None: pass
-            def do_GET(self) -> None: owner.handle(self)
-            def do_POST(self) -> None: owner.handle(self)
-            def do_PATCH(self) -> None: owner.handle(self)
-            def do_DELETE(self) -> None: owner.handle(self)
+            def log_message(self, format: str, *args: object) -> None:
+                pass
+
+            def do_GET(self) -> None:
+                owner.handle(self)
+
+            def do_POST(self) -> None:
+                owner.handle(self)
+
+            def do_PATCH(self) -> None:
+                owner.handle(self)
+
+            def do_DELETE(self) -> None:
+                owner.handle(self)
+
         self.server = ThreadingHTTPServer(("127.0.0.1", self.service.api_port()), Handler)
-        self.thread = threading.Thread(target=self.server.serve_forever, name="serial-vision-api", daemon=True)
+        self.thread = threading.Thread(
+            target=self.server.serve_forever, name="serial-vision-api", daemon=True
+        )
         self.thread.start()
 
     def stop(self) -> None:
         if self.server is None:
             return
-        self.server.shutdown(); self.server.server_close(); self.server = None; self.thread = None
+        self.server.shutdown()
+        self.server.server_close()
+        self.server = None
+        self.thread = None
 
     def restart(self) -> None:
         self.stop()
-        if self.service.api_enabled(): self.start()
+        if self.service.api_enabled():
+            self.start()
 
     def handle(self, request: BaseHTTPRequestHandler) -> None:
-        parsed = urlparse(request.path); path = parsed.path; key_id: str | None = None; status = 500; detail = ""
+        parsed = urlparse(request.path)
+        path = parsed.path
+        key_id: str | None = None
+        status = 500
+        detail = ""
         try:
             if path == "/api/v1/health":
-                status = 200; return self.reply(request, status, {"status": "ok"})
+                status = 200
+                return self.reply(request, status, {"status": "ok"})
             if path == "/api/v1/openapi.json":
-                status = 200; return self.reply(request, status, self.openapi())
+                status = 200
+                return self.reply(request, status, self.openapi())
             if path == "/api/v1/docs":
-                status = 200; return self.html(request, self.docs_html())
+                status = 200
+                return self.html(request, self.docs_html())
             key_id = self.authorize(request)
-            status, payload = self.dispatch(request.command, path, parse_qs(parsed.query), self.body(request))
+            status, payload = self.dispatch(
+                request.command, path, parse_qs(parsed.query), self.body(request)
+            )
             if isinstance(payload, ImageStream):
                 return self.file_reply(request, status, payload)
             if isinstance(payload, GeneratedCodeStream):
                 return self.generated_code_reply(request, status, payload)
             return self.reply(request, status, payload)
         except ApiError as error:
-            status, detail = error.status, error.message; return self.reply(request, status, {"error": detail})
-        except (ValueError, KeyError) as error:
-            status, detail = 422, str(error); return self.reply(request, status, {"error": detail})
+            status, detail = error.status, error_message(self.service.locale(), error.message)
+            return self.reply(request, status, {"error": detail})
+        except (ValueError, KeyError, TypeError, sqlite3.IntegrityError) as error:
+            status, detail = (
+                (404 if str(error) in {"record_missing", "model_missing"} else 422),
+                error_message(self.service.locale(), error),
+            )
+            return self.reply(request, status, {"error": detail})
         finally:
-            self.service._database.audit_api(key_id, request.command, path, status, request.client_address[0], detail)
+            self.service._database.audit_api(
+                key_id, request.command, path, status, request.client_address[0], detail
+            )
 
     def authorize(self, request: BaseHTTPRequestHandler) -> str:
         authorization = request.headers.get("Authorization", "")
         if not authorization.startswith("Bearer "):
-            raise ApiError(401, "Bearer token required")
+            raise ApiError(401, "api_bearer_required")
         token_hash = hashlib.sha256(authorization[7:].encode()).hexdigest()
         key = self.service._database.api_key_by_hash(token_hash)
         if key is None or key["revoked_at"]:
-            raise ApiError(401, "Invalid or revoked API key")
+            raise ApiError(401, "api_key_invalid")
         if key["expires_at"] and datetime.fromisoformat(key["expires_at"]) <= datetime.now(UTC):
-            raise ApiError(401, "API key has expired")
+            raise ApiError(401, "api_key_expired")
         with self.lock:
-            now = time.monotonic(); previous = self.last_request.get(key["id"], 0.0)
+            now = time.monotonic()
+            previous = self.last_request.get(key["id"], 0.0)
             if now - previous < int(key["min_interval_ms"]) / 1000:
-                raise ApiError(429, "Rate limit exceeded")
+                raise ApiError(429, "api_rate_exceeded")
             self.last_request[key["id"]] = now
         self.service._database.touch_api_key(key["id"])
         return str(key["id"])
 
-    def dispatch(self, method: str, path: str, query: dict[str, list[str]], data: dict[str, object]) -> tuple[int, object]:
+    def dispatch(
+        self, method: str, path: str, query: dict[str, list[str]], data: dict[str, object]
+    ) -> tuple[int, object]:
         parts = path.strip("/").split("/")
         if parts[:2] != ["api", "v1"] or len(parts) < 3:
             raise ApiError(404, "Not found")
@@ -101,7 +139,9 @@ class LocalApiServer:
             return self.code(method, parts, data)
         raise ApiError(404, "Not found")
 
-    def models(self, method: str, identifier: int | None, data: dict[str, object]) -> tuple[int, object]:
+    def models(
+        self, method: str, identifier: int | None, data: dict[str, object]
+    ) -> tuple[int, object]:
         rows = self.service.models()
         if method == "GET":
             result = [self.model(row) for row in rows]
@@ -112,15 +152,40 @@ class LocalApiServer:
                 raise ApiError(404, "Model not found")
             return 200, item
         if method == "POST":
-            self.service.add_model(str(data["name"]), str(data["device_type"]), str(data["service"])); return 201, {"created": True}
+            self.service.add_model(data["name"], data["device_type"], data["service"])
+            return 201, {"created": True}
+        if (
+            method in {"PATCH", "DELETE"}
+            and identifier is not None
+            and not any(row["id"] == identifier for row in rows)
+        ):
+            raise ApiError(404, "Model not found")
         if method == "PATCH" and identifier:
-            self.service.update_model(identifier, str(data["name"]), str(data["device_type"]), str(data["service"])); return 200, {"updated": True}
+            self.service.update_model(
+                identifier, data["name"], data["device_type"], data["service"]
+            )
+            return 200, {"updated": True}
         if method == "DELETE" and identifier:
-            self.service.delete_model(identifier); return 204, None
+            self.service.delete_model(identifier)
+            return 204, None
         raise ApiError(405, "Method not allowed")
 
-    def equipment(self, method: str, identifier: int | None, query: dict[str, list[str]], data: dict[str, object]) -> tuple[int, object]:
-        rows = self.service.all_filtered_devices(query.get("search", [""])[0], query.get("type", [""])[0], query.get("service", [""])[0], query.get("date_from", [""])[0], query.get("date_to", [""])[0], int(query["model_id"][0]) if "model_id" in query else None, query.get("operation", [""])[0])
+    def equipment(
+        self,
+        method: str,
+        identifier: int | None,
+        query: dict[str, list[str]],
+        data: dict[str, object],
+    ) -> tuple[int, object]:
+        rows = self.service.all_filtered_devices(
+            query.get("search", [""])[0],
+            query.get("type", [""])[0],
+            query.get("service", [""])[0],
+            query.get("date_from", [""])[0],
+            query.get("date_to", [""])[0],
+            int(query["model_id"][0]) if "model_id" in query else None,
+            query.get("operation", [""])[0],
+        )
         if method == "GET":
             result = [self.device(row) for row in rows]
             if identifier is None:
@@ -129,11 +194,30 @@ class LocalApiServer:
             if item is None:
                 raise ApiError(404, "Equipment record not found")
             return 200, item
-        required = {"recognized_text", "contract_number", "operation_type", "device_model_id", "registered_at"}
-        if method in {"POST", "PATCH"} and not required <= data.keys(): raise ApiError(422, "Missing equipment fields")
-        if method == "POST": self.service.add_device(data); return 201, {"created": True}
-        if method == "PATCH" and identifier: self.service.update_device(identifier, data); return 200, {"updated": True}
-        if method == "DELETE" and identifier: self.service.delete_device(identifier); return 204, None
+        required = {
+            "recognized_text",
+            "contract_number",
+            "operation_type",
+            "device_model_id",
+            "registered_at",
+        }
+        if (
+            method in {"PATCH", "DELETE"}
+            and identifier is not None
+            and not any(row["id"] == identifier for row in rows)
+        ):
+            raise ApiError(404, "Equipment record not found")
+        if method in {"POST", "PATCH"} and not required <= data.keys():
+            raise ApiError(422, "Missing equipment fields")
+        if method == "POST":
+            self.service.add_device(data)
+            return 201, {"created": True}
+        if method == "PATCH" and identifier:
+            self.service.update_device(identifier, data)
+            return 200, {"updated": True}
+        if method == "DELETE" and identifier:
+            self.service.delete_device(identifier)
+            return 204, None
         raise ApiError(405, "Method not allowed")
 
     def image(self, method: str, parts: list[str], data: dict[str, object]) -> tuple[int, object]:
@@ -186,7 +270,15 @@ class LocalApiServer:
         return image_path
 
     @staticmethod
-    def model(row: object) -> dict[str, object]: return {"id": row["id"], "name": row["name"], "device_type": row["device_type"], "service": row["service"], "usage_count": row["usage_count"]}
+    def model(row: object) -> dict[str, object]:
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "device_type": row["device_type"],
+            "service": row["service"],
+            "usage_count": row["usage_count"],
+        }
+
     @staticmethod
     def device(row: object) -> dict[str, object]:
         image_path = row["source_image_path"]
@@ -200,18 +292,30 @@ class LocalApiServer:
             "model_name": row["model_name"],
             "registered_at": row["registered_at"],
         }
+
     @staticmethod
     def body(request: BaseHTTPRequestHandler) -> dict[str, object]:
-        length = int(request.headers.get("Content-Length", "0")); return json.loads(request.rfile.read(length) or b"{}") if length else {}
+        length = int(request.headers.get("Content-Length", "0"))
+        if not 0 <= length <= 1024 * 1024:
+            raise ApiError(422, "Request body must be at most 1 MiB")
+        data = json.loads(request.rfile.read(length) or b"{}") if length else {}
+        if not isinstance(data, dict):
+            raise ApiError(422, "Request body must be a JSON object")
+        return data
+
     @staticmethod
     def reply(request: BaseHTTPRequestHandler, status: int, payload: object) -> None:
         request.send_response(status)
         if status != 204:
-            content = json.dumps(payload, ensure_ascii=False).encode(); request.send_header("Content-Type", "application/json; charset=utf-8"); request.send_header("Content-Length", str(len(content)))
+            content = json.dumps(payload, ensure_ascii=False).encode()
+            request.send_header("Content-Type", "application/json; charset=utf-8")
+            request.send_header("Content-Length", str(len(content)))
         request.end_headers()
-        if status != 204: request.wfile.write(content)
+        if status != 204:
+            request.wfile.write(content)
+
     @staticmethod
-    def file_reply(request: BaseHTTPRequestHandler, status: int, image: "ImageStream") -> None:
+    def file_reply(request: BaseHTTPRequestHandler, status: int, image: ImageStream) -> None:
         try:
             size = image.path.stat().st_size
             source = image.path.open("rb")
@@ -228,7 +332,9 @@ class LocalApiServer:
                 request.wfile.write(chunk)
 
     @staticmethod
-    def generated_code_reply(request: BaseHTTPRequestHandler, status: int, image: "GeneratedCodeStream") -> None:
+    def generated_code_reply(
+        request: BaseHTTPRequestHandler, status: int, image: GeneratedCodeStream
+    ) -> None:
         filename = quote(image.filename)
         request.send_response(status)
         request.send_header("Content-Type", "image/png")
@@ -239,7 +345,13 @@ class LocalApiServer:
 
     @staticmethod
     def html(request: BaseHTTPRequestHandler, content: str) -> None:
-        data = content.encode(); request.send_response(200); request.send_header("Content-Type", "text/html; charset=utf-8"); request.send_header("Content-Length", str(len(data))); request.end_headers(); request.wfile.write(data)
+        data = content.encode()
+        request.send_response(200)
+        request.send_header("Content-Type", "text/html; charset=utf-8")
+        request.send_header("Content-Length", str(len(data)))
+        request.end_headers()
+        request.wfile.write(data)
+
     def openapi(self) -> dict[str, object]:
         model = {
             "type": "object",
@@ -254,16 +366,32 @@ class LocalApiServer:
         }
         equipment = {
             "type": "object",
-            "required": ["recognized_text", "contract_number", "operation_type", "device_model_id", "registered_at"],
+            "required": [
+                "recognized_text",
+                "contract_number",
+                "operation_type",
+                "device_model_id",
+                "registered_at",
+            ],
             "properties": {
                 "id": {"type": "integer", "example": 1},
                 "recognized_text": {"type": "string", "example": "SN: ABC123"},
                 "contract_number": {"type": "string", "example": "12345", "nullable": True},
                 "operation_type": {"type": "string", "enum": ["receipt", "issue"]},
-                "source_image_name": {"type": "string", "example": "photo.jpg", "nullable": True, "readOnly": True, "description": "File name only; the local source path is never returned."},
+                "source_image_name": {
+                    "type": "string",
+                    "example": "photo.jpg",
+                    "nullable": True,
+                    "readOnly": True,
+                    "description": "File name only; the local source path is never returned.",
+                },
                 "device_model_id": {"type": "integer", "example": 2},
                 "model_name": {"type": "string", "readOnly": True},
-                "registered_at": {"type": "string", "format": "date-time", "example": "2026-08-26T18:00:00+00:00"},
+                "registered_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "example": "2026-08-26T18:00:00+00:00",
+                },
             },
         }
         equipment_write = {
@@ -277,7 +405,11 @@ class LocalApiServer:
             "type": "object",
             "required": ["record_id", "image_name", "available"],
             "properties": {
-                "record_id": {"type": "integer", "example": 1, "description": "Equipment record id, not device_model_id."},
+                "record_id": {
+                    "type": "integer",
+                    "example": 1,
+                    "description": "Equipment record id, not device_model_id.",
+                },
                 "image_name": {"type": "string", "example": "photo.jpg"},
                 "available": {"type": "boolean", "example": True},
             },
@@ -285,18 +417,46 @@ class LocalApiServer:
         image_get = {
             "type": "object",
             "required": ["record_id"],
-            "properties": {"record_id": {"type": "integer", "example": 1, "description": "Equipment record id, not device_model_id."}},
+            "properties": {
+                "record_id": {
+                    "type": "integer",
+                    "example": 1,
+                    "description": "Equipment record id, not device_model_id.",
+                }
+            },
         }
         code_get = {
             "type": "object",
             "required": ["record_id", "type"],
             "properties": {
-                "record_id": {"type": "integer", "example": 1, "description": "Equipment record id, not device_model_id."},
-                "type": {"type": "string", "enum": ["qrcode", "barcode"], "description": "barcode uses Code 128."},
+                "record_id": {
+                    "type": "integer",
+                    "example": 1,
+                    "description": "Equipment record id, not device_model_id.",
+                },
+                "type": {
+                    "type": "string",
+                    "enum": ["qrcode", "barcode"],
+                    "description": "barcode uses Code 128.",
+                },
             },
         }
-        error = {"type": "object", "properties": {"error": {"type": "string", "example": "Bearer token required"}}}
-        response = lambda description, schema: {"description": description, "content": {"application/json": {"schema": schema}}}
+        error = {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string",
+                    "example": t(self.service.locale(), "api_bearer_required"),
+                }
+            },
+        }
+
+        def response(description: str, schema: dict[str, object]) -> dict[str, object]:
+            return {
+                "description": description,
+                "content": {"application/json": {"schema": schema}},
+            }
+
         errors = {
             "401": response("Missing, expired or revoked Bearer key", error),
             "404": response("Equipment record was not found", error),
@@ -304,46 +464,225 @@ class LocalApiServer:
             "422": response("Payload validation failed", error),
             "429": response("The key rate limit was exceeded", error),
         }
-        body = lambda schema: {"required": True, "content": {"application/json": {"schema": schema}}}
+
+        def body(schema: dict[str, object]) -> dict[str, object]:
+            return {
+                "required": True,
+                "content": {"application/json": {"schema": schema}},
+            }
+
         identifier = [{"name": "id", "in": "path", "required": True, "schema": {"type": "integer"}}]
-        record_id = [{"name": "record_id", "in": "path", "required": True, "description": "Equipment record id, not device_model_id.", "schema": {"type": "integer"}}]
+        record_id = [
+            {
+                "name": "record_id",
+                "in": "path",
+                "required": True,
+                "description": "Equipment record id, not device_model_id.",
+                "schema": {"type": "integer"},
+            }
+        ]
         return {
             "openapi": "3.0.3",
-            "info": {"title": "Advanced Serial Vision Local API", "version": "v1", "description": "Local BAS integration API. Use the Authorize button with a Bearer key."},
+            "info": {
+                "title": "Advanced Serial Vision Local API",
+                "version": "v1",
+                "description": "Local BAS integration API. Use the Authorize button with a Bearer key.",
+            },
             "servers": [{"url": f"http://127.0.0.1:{self.service.api_port()}/api/v1"}],
-            "tags": [{"name": "Application Routes", "description": "Equipment, models, and source-image operations for BAS integrations"}],
+            "tags": [
+                {
+                    "name": "Application Routes",
+                    "description": "Equipment, models, and source-image operations for BAS integrations",
+                }
+            ],
             "security": [{"bearerAuth": []}],
             "components": {
-                "securitySchemes": {"bearerAuth": {"type": "http", "scheme": "bearer", "bearerFormat": "API key", "description": "Paste the sv_ key issued by Advanced Serial Vision."}},
-                "schemas": {"Model": model, "Equipment": equipment, "EquipmentWrite": equipment_write, "ImageStatus": image_status, "ImageGet": image_get, "CodeGet": code_get, "Error": error},
+                "securitySchemes": {
+                    "bearerAuth": {
+                        "type": "http",
+                        "scheme": "bearer",
+                        "bearerFormat": "API key",
+                        "description": "Paste the sv_ key issued by Advanced Serial Vision.",
+                    }
+                },
+                "schemas": {
+                    "Model": model,
+                    "Equipment": equipment,
+                    "EquipmentWrite": equipment_write,
+                    "ImageStatus": image_status,
+                    "ImageGet": image_get,
+                    "CodeGet": code_get,
+                    "Error": error,
+                },
             },
             "paths": {
-                "/health": {"get": {"tags": ["Application Routes"], "summary": "API health", "security": [], "responses": {"200": response("API is running", {"type": "object", "properties": {"status": {"type": "string", "example": "ok"}}})}}},
+                "/health": {
+                    "get": {
+                        "tags": ["Application Routes"],
+                        "summary": "API health",
+                        "security": [],
+                        "responses": {
+                            "200": response(
+                                "API is running",
+                                {
+                                    "type": "object",
+                                    "properties": {"status": {"type": "string", "example": "ok"}},
+                                },
+                            )
+                        },
+                    }
+                },
                 "/models": {
-                    "get": {"tags": ["Application Routes"], "summary": "List models", "responses": {"200": response("Model list", {"type": "array", "items": {"$ref": "#/components/schemas/Model"}}), **errors}},
-                    "post": {"tags": ["Application Routes"], "summary": "Create model", "requestBody": body(model), "responses": {"201": response("Model created", {"type": "object"}), **errors}},
+                    "get": {
+                        "tags": ["Application Routes"],
+                        "summary": "List models",
+                        "responses": {
+                            "200": response(
+                                "Model list",
+                                {"type": "array", "items": {"$ref": "#/components/schemas/Model"}},
+                            ),
+                            **errors,
+                        },
+                    },
+                    "post": {
+                        "tags": ["Application Routes"],
+                        "summary": "Create model",
+                        "requestBody": body(model),
+                        "responses": {
+                            "201": response("Model created", {"type": "object"}),
+                            **errors,
+                        },
+                    },
                 },
                 "/models/{id}": {
-                    "patch": {"tags": ["Application Routes"], "summary": "Update model", "parameters": identifier, "requestBody": body(model), "responses": {"200": response("Model updated", {"type": "object"}), **errors}},
-                    "delete": {"tags": ["Application Routes"], "summary": "Delete model", "parameters": identifier, "responses": {"204": {"description": "Model deleted"}, **errors}},
+                    "patch": {
+                        "tags": ["Application Routes"],
+                        "summary": "Update model",
+                        "parameters": identifier,
+                        "requestBody": body(model),
+                        "responses": {
+                            "200": response("Model updated", {"type": "object"}),
+                            **errors,
+                        },
+                    },
+                    "delete": {
+                        "tags": ["Application Routes"],
+                        "summary": "Delete model",
+                        "parameters": identifier,
+                        "responses": {"204": {"description": "Model deleted"}, **errors},
+                    },
                 },
                 "/equipment": {
-                    "get": {"tags": ["Application Routes"], "summary": "List equipment", "responses": {"200": response("Equipment list", {"type": "array", "items": {"$ref": "#/components/schemas/Equipment"}}), **errors}},
-                    "post": {"tags": ["Application Routes"], "summary": "Create equipment", "requestBody": body(equipment_write), "responses": {"201": response("Equipment created", {"type": "object"}), **errors}},
+                    "get": {
+                        "tags": ["Application Routes"],
+                        "summary": "List equipment",
+                        "responses": {
+                            "200": response(
+                                "Equipment list",
+                                {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/Equipment"},
+                                },
+                            ),
+                            **errors,
+                        },
+                    },
+                    "post": {
+                        "tags": ["Application Routes"],
+                        "summary": "Create equipment",
+                        "requestBody": body(equipment_write),
+                        "responses": {
+                            "201": response("Equipment created", {"type": "object"}),
+                            **errors,
+                        },
+                    },
                 },
                 "/equipment/{id}": {
-                    "get": {"tags": ["Application Routes"], "summary": "Get equipment record", "parameters": identifier, "responses": {"200": response("Equipment record", {"$ref": "#/components/schemas/Equipment"}), **errors}},
-                    "patch": {"tags": ["Application Routes"], "summary": "Update equipment", "parameters": identifier, "requestBody": body(equipment_write), "responses": {"200": response("Equipment updated", {"type": "object"}), **errors}},
-                    "delete": {"tags": ["Application Routes"], "summary": "Delete equipment", "parameters": identifier, "responses": {"204": {"description": "Equipment deleted"}, **errors}},
+                    "get": {
+                        "tags": ["Application Routes"],
+                        "summary": "Get equipment record",
+                        "parameters": identifier,
+                        "responses": {
+                            "200": response(
+                                "Equipment record", {"$ref": "#/components/schemas/Equipment"}
+                            ),
+                            **errors,
+                        },
+                    },
+                    "patch": {
+                        "tags": ["Application Routes"],
+                        "summary": "Update equipment",
+                        "parameters": identifier,
+                        "requestBody": body(equipment_write),
+                        "responses": {
+                            "200": response("Equipment updated", {"type": "object"}),
+                            **errors,
+                        },
+                    },
+                    "delete": {
+                        "tags": ["Application Routes"],
+                        "summary": "Delete equipment",
+                        "parameters": identifier,
+                        "responses": {"204": {"description": "Equipment deleted"}, **errors},
+                    },
                 },
                 "/image/check/{record_id}": {
-                    "get": {"tags": ["Application Routes"], "summary": "Check source image availability", "description": "record_id is the id of an equipment record, not a model. The response contains no local path.", "parameters": record_id, "responses": {"200": response("Source image is available", image_status), **errors}},
+                    "get": {
+                        "tags": ["Application Routes"],
+                        "summary": "Check source image availability",
+                        "description": "record_id is the id of an equipment record, not a model. The response contains no local path.",
+                        "parameters": record_id,
+                        "responses": {
+                            "200": response("Source image is available", image_status),
+                            **errors,
+                        },
+                    },
                 },
                 "/image/get": {
-                    "post": {"tags": ["Application Routes"], "summary": "Download source image", "description": "Use an equipment record id. The response is a binary stream; read the original filename with extension from the Content-Disposition header.", "requestBody": body(image_get), "responses": {"200": {"description": "Image byte stream; filename is in the standard Content-Disposition header", "headers": {"Content-Disposition": {"schema": {"type": "string"}, "description": "Original file name with extension (RFC-compatible attachment filename)"}}, "content": {"image/*": {"schema": {"type": "string", "format": "binary"}}}}, **errors}},
+                    "post": {
+                        "tags": ["Application Routes"],
+                        "summary": "Download source image",
+                        "description": "Use an equipment record id. The response is a binary stream; read the original filename with extension from the Content-Disposition header.",
+                        "requestBody": body(image_get),
+                        "responses": {
+                            "200": {
+                                "description": "Image byte stream; filename is in the standard Content-Disposition header",
+                                "headers": {
+                                    "Content-Disposition": {
+                                        "schema": {"type": "string"},
+                                        "description": "Original file name with extension (RFC-compatible attachment filename)",
+                                    }
+                                },
+                                "content": {
+                                    "image/*": {"schema": {"type": "string", "format": "binary"}}
+                                },
+                            },
+                            **errors,
+                        },
+                    },
                 },
                 "/code/get": {
-                    "post": {"tags": ["Application Routes"], "summary": "Generate QR or Code 128 barcode", "description": "record_id is the equipment record id, not device_model_id. Generates a PNG from recognized_text without changing the record. The filename is returned in Content-Disposition.", "requestBody": body(code_get), "responses": {"200": {"description": "Generated PNG byte stream. barcode uses Code 128.", "headers": {"Content-Disposition": {"schema": {"type": "string"}, "description": "Generated filename: qrcode_<code>_<H_M_d_m_Y>.png or barcode_<code>_<H_M_d_m_Y>.png."}}, "content": {"image/png": {"schema": {"type": "string", "format": "binary"}}}}, **errors}},
+                    "post": {
+                        "tags": ["Application Routes"],
+                        "summary": "Generate QR or Code 128 barcode",
+                        "description": "record_id is the equipment record id, not device_model_id. Generates a PNG from recognized_text without changing the record. The filename is returned in Content-Disposition.",
+                        "requestBody": body(code_get),
+                        "responses": {
+                            "200": {
+                                "description": "Generated PNG byte stream. barcode uses Code 128.",
+                                "headers": {
+                                    "Content-Disposition": {
+                                        "schema": {"type": "string"},
+                                        "description": "Generated filename: qrcode_<code>_<H_M_d_m_Y>.png or barcode_<code>_<H_M_d_m_Y>.png.",
+                                    }
+                                },
+                                "content": {
+                                    "image/png": {"schema": {"type": "string", "format": "binary"}}
+                                },
+                            },
+                            **errors,
+                        },
+                    },
                 },
             },
         }
@@ -351,7 +690,6 @@ class LocalApiServer:
     @staticmethod
     def docs_html() -> str:
         return (Path(__file__).with_name("assets") / "swagger.html").read_text(encoding="utf-8")
-
 
 
 class ImageStream:
@@ -367,4 +705,6 @@ class GeneratedCodeStream:
 
 
 class ApiError(Exception):
-    def __init__(self, status: int, message: str) -> None: self.status = status; self.message = message
+    def __init__(self, status: int, message: str) -> None:
+        self.status = status
+        self.message = message

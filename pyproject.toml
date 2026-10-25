@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=77,<83"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "serial-vision"
 dynamic = ["version"]
@@ -19,6 +23,9 @@ dependencies = [
 [project.optional-dependencies]
 build = ["pyinstaller>=6.11,<7"]
 
+[dependency-groups]
+dev = ["ruff>=0.14,<0.15", "mypy>=1.18,<2"]
+
 [project.scripts]
 serial-vision = "serial_vision.main:main"
 
@@ -27,19 +34,29 @@ package-dir = {"" = "application"}
 
 [tool.setuptools.packages.find]
 where = ["application"]
+include = ["serial_vision*"]
 
 [tool.setuptools.dynamic]
 version = {file = ["VERSION"]}
 
 [tool.setuptools.package-data]
-serial_vision = ["assets/*.qss", "assets/*.png", "assets/*.ico", "assets/*.html", "assets/icons/*/*.svg", "assets/help/*.md"]
+serial_vision = ["assets/*.qss", "assets/*.png", "assets/*.ico", "assets/*.html", "assets/icons/*.svg", "assets/icons/*/*.svg", "assets/help/*.md"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+include = ["application/**/*.py", "scripts/**/*.py", "tools/**/*.py", "pyproject.toml"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+ignore = ["E501"] # Long translations and URLs are intentionally kept intact.
+
+[tool.mypy]
+python_version = "3.11"
+files = ["application/serial_vision/image_catalog.py", "application/serial_vision/image_editing.py", "application/serial_vision/recognition_strategies.py", "application/serial_vision/updates.py", "application/serial_vision/version.py"]
+check_untyped_defs = true
+ignore_missing_imports = true
+follow_imports = "silent"
 
 [tool.pytest.ini_options]
 testpaths = ["application/tests"]

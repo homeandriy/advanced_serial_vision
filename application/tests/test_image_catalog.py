@@ -5,7 +5,6 @@ import unittest
 from pathlib import Path
 
 from PIL import Image
-
 from serial_vision.image_catalog import ImageCatalog
 
 
@@ -21,4 +20,3 @@ class ImageCatalogTest(unittest.TestCase):
             catalog.rotate_clockwise(image_path)
             with Image.open(image_path) as rotated:
                 self.assertEqual((20, 10), rotated.size)
-

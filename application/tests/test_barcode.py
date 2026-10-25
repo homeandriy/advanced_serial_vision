@@ -7,7 +7,6 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from PIL import Image
-
 from serial_vision.barcode import BarcodeRecognizer, extract_printed_codes
 from serial_vision.recognition_strategies import RecognitionOptions
 
@@ -40,7 +39,9 @@ SN: TV524413228"""
         with TemporaryDirectory() as directory, patch.dict("sys.modules", {"zxingcpp": reader}):
             path = Path(directory) / "label.png"
             Image.new("RGB", (40, 30), "white").save(path)
-            value = BarcodeRecognizer(options=RecognitionOptions(rotate=True, enhance=False)).recognize(path)
+            value = BarcodeRecognizer(
+                options=RecognitionOptions(rotate=True, enhance=False)
+            ).recognize(path)
         self.assertEqual("Code128: SERIAL123", value)
         self.assertEqual(2, reader.read_barcodes.call_count)
 
@@ -49,7 +50,9 @@ SN: TV524413228"""
         with TemporaryDirectory() as directory, patch.dict("sys.modules", {"zxingcpp": reader}):
             path = Path(directory) / "label.png"
             Image.new("RGB", (40, 30), "white").save(path)
-            value = BarcodeRecognizer(options=RecognitionOptions(rotate=False, enhance=False)).recognize(path)
+            value = BarcodeRecognizer(
+                options=RecognitionOptions(rotate=False, enhance=False)
+            ).recognize(path)
         self.assertEqual("", value)
         reader.read_barcodes.assert_called_once()
 

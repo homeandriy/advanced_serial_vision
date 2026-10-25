@@ -4,16 +4,17 @@ import hashlib
 import secrets
 import sqlite3
 from collections import defaultdict
-import keyring
 from datetime import UTC, datetime
-from zoneinfo import ZoneInfo
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
-from serial_vision.code_images import generated_code_filename, generate_code_png
+import keyring
+
+from serial_vision.ai_vision import AiVisionRecognizer
+from serial_vision.code_images import generate_code_png, generated_code_filename
 from serial_vision.database import Database
 from serial_vision.i18n import system_locale
 from serial_vision.model_import import read_models_xlsx
-from serial_vision.ai_vision import AiVisionRecognizer
 from serial_vision.recognition_strategies import RecognitionOptions
 
 
@@ -47,7 +48,7 @@ class SerialVisionService:
 
     def splitter_state(self, name: str) -> bytes | None:
         if name not in {"recognition_horizontal", "recognition_vertical"}:
-            raise ValueError("Unknown splitter")
+            raise ValueError("splitter_unknown")
         value = self._database.setting(f"ui_{name}_splitter", "")
         try:
             return bytes.fromhex(value) if value else None
@@ -56,7 +57,7 @@ class SerialVisionService:
 
     def save_splitter_state(self, name: str, state: bytes) -> None:
         if name not in {"recognition_horizontal", "recognition_vertical"}:
-            raise ValueError("Unknown splitter")
+            raise ValueError("splitter_unknown")
         self._database.set_setting(f"ui_{name}_splitter", state.hex())
 
     def theme(self) -> str:
@@ -73,31 +74,50 @@ class SerialVisionService:
         return self._database.setting("api_enabled", "no") == "yes"
 
     def api_port(self) -> int:
-        try: return int(self._database.setting("api_port", "4556"))
-        except ValueError: return 4556
+        try:
+            return int(self._database.setting("api_port", "4556"))
+        except ValueError:
+            return 4556
 
     def save_api_settings(self, enabled: bool, port: int) -> None:
-        if not 1024 <= port <= 65535: raise ValueError("api_port_invalid")
+        if not 1024 <= port <= 65535:
+            raise ValueError("api_port_invalid")
         self._database.set_setting("api_enabled", "yes" if enabled else "no")
         self._database.set_setting("api_port", str(port))
 
-    def issue_api_key(self, name: str, note: str, expires_at: str | None, min_interval_ms: int) -> str:
-        if not name.strip(): raise ValueError("api_key_name_required")
-        if min_interval_ms not in (200, 500, 1000, 2000): raise ValueError("api_rate_invalid")
+    def issue_api_key(
+        self, name: str, note: str, expires_at: str | None, min_interval_ms: int
+    ) -> str:
+        if not name.strip():
+            raise ValueError("api_key_name_required")
+        if min_interval_ms not in (200, 500, 1000, 2000):
+            raise ValueError("api_rate_invalid")
         token = "sv_" + secrets.token_urlsafe(32)
-        self._database.create_api_key(name.strip(), note.strip(), hashlib.sha256(token.encode()).hexdigest(), token[:12], expires_at, min_interval_ms)
+        self._database.create_api_key(
+            name.strip(),
+            note.strip(),
+            hashlib.sha256(token.encode()).hexdigest(),
+            token[:12],
+            expires_at,
+            min_interval_ms,
+        )
         return token
 
-    def api_keys(self) -> list[sqlite3.Row]: return self._database.api_keys()
-    def revoke_api_key(self, key_id: str) -> None: self._database.revoke_api_key(key_id)
-    def api_audit(self) -> list[sqlite3.Row]: return self._database.api_audit()
+    def api_keys(self) -> list[sqlite3.Row]:
+        return self._database.api_keys()
+
+    def revoke_api_key(self, key_id: str) -> None:
+        self._database.revoke_api_key(key_id)
+
+    def api_audit(self) -> list[sqlite3.Row]:
+        return self._database.api_audit()
 
     def setup_required(self) -> bool:
         return self._database.setting("license_accepted") != "yes" or self.image_directory() is None
 
     def complete_setup(self, image_directory: Path) -> None:
         if not image_directory.is_dir():
-            raise ValueError("The selected image folder is unavailable.")
+            raise ValueError("folder_missing")
         self.save_settings(image_directory)
         self._database.set_setting("license_accepted", "yes")
 
@@ -119,7 +139,11 @@ class SerialVisionService:
         return None
 
     def locale(self) -> str:
-        return self._database.setting("locale", system_locale()) if self._database.has_setting("locale") else system_locale()
+        return (
+            self._database.setting("locale", system_locale())
+            if self._database.has_setting("locale")
+            else system_locale()
+        )
 
     def save_locale(self, locale: str) -> None:
         self._database.set_setting("locale", locale)
@@ -139,7 +163,9 @@ class SerialVisionService:
         keyring.set_password("Serial Vision", credential_id, token)
         self._database.save_ai_agent(name, provider, model, credential_id)
 
-    def update_ai_agent(self, agent_id: str, name: str, provider: str, model: str, token: str) -> None:
+    def update_ai_agent(
+        self, agent_id: str, name: str, provider: str, model: str, token: str
+    ) -> None:
         agent = next((row for row in self.ai_agents() if row["id"] == agent_id), None)
         if agent is None:
             raise ValueError("ai_profile_missing")
@@ -164,10 +190,10 @@ class SerialVisionService:
     def recognize_ai(self, agent_id: str, image_path: Path) -> str:
         agent = next((row for row in self.ai_agents() if row["id"] == agent_id), None)
         if agent is None:
-            raise RuntimeError("AI profile not found.")
+            raise RuntimeError("ai_profile_missing")
         token = keyring.get_password("Serial Vision", agent["credential_id"])
         if not token:
-            raise RuntimeError("AI profile key is unavailable in the Windows Credential Manager.")
+            raise RuntimeError("profile_key_required")
         return AiVisionRecognizer().recognize(agent["provider"], agent["model"], token, image_path)
 
     def models(self) -> list[sqlite3.Row]:
@@ -177,20 +203,34 @@ class SerialVisionService:
         return self._database.popular_models()
 
     def add_model(self, name: str, device_type: str, service: str) -> None:
+        self._validate_model(name, device_type, service)
         try:
-            self._database.save_model(None, name, device_type, service)
+            self._database.save_model(None, name.strip(), device_type, service)
         except sqlite3.IntegrityError as error:
             raise ValueError("model_exists") from error
 
     def update_model(self, model_id: int, name: str, device_type: str, service: str) -> None:
+        self._validate_model(name, device_type, service)
         try:
-            self._database.save_model(model_id, name, device_type, service)
+            self._database.save_model(model_id, name.strip(), device_type, service)
         except sqlite3.IntegrityError as error:
             raise ValueError("model_exists") from error
 
+    @staticmethod
+    def _validate_model(name: str, device_type: str, service: str) -> None:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("model_name_required")
+        if device_type not in ("modem", "tuner"):
+            raise ValueError("model_type_invalid")
+        if service not in ("internet", "television"):
+            raise ValueError("model_service_invalid")
+
     def import_models_xlsx(self, path: Path) -> dict[str, object]:
         imported = read_models_xlsx(path)
-        existing = {(str(row["name"]).casefold(), str(row["device_type"]), str(row["service"])) for row in self.models()}
+        existing = {
+            (str(row["name"]).casefold(), str(row["device_type"]), str(row["service"]))
+            for row in self.models()
+        }
         added = duplicates = 0
         for model in imported.models:
             key = (model.name.casefold(), model.device_type, model.service)
@@ -214,16 +254,40 @@ class SerialVisionService:
 
     def update_device(self, device_id: int, data: dict[str, object]) -> None:
         self._validate_device_data(data)
-        self._database.save_device(device_id, self._utc_device_data(data))
+        copy = dict(data)
+        copy.setdefault("source_image_path", self._database.source_image_path(device_id) or "")
+        self._database.save_device(device_id, self._utc_device_data(copy))
 
-    @staticmethod
-    def _validate_device_data(data: dict[str, object]) -> None:
-        if len(str(data.get("contract_number", "")).strip()) > 20:
+    def _validate_device_data(self, data: dict[str, object]) -> None:
+        text = data.get("recognized_text")
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("recognized_text_required")
+        contract = data.get("contract_number")
+        if contract is not None and not isinstance(contract, str):
+            raise ValueError("contract_invalid")
+        if len((contract or "").strip()) > 20:
             raise ValueError("contract_too_long")
+        if data.get("operation_type") not in ("receipt", "issue"):
+            raise ValueError("operation_invalid")
+        model_id = data.get("device_model_id")
+        if type(model_id) is not int or not self._database.model_exists(model_id):
+            raise ValueError("model_required")
+        timestamp = data.get("registered_at")
+        try:
+            if not isinstance(timestamp, str):
+                raise ValueError
+            datetime.fromisoformat(timestamp)
+        except ValueError as error:
+            raise ValueError("registered_at_invalid") from error
+        source = data.get("source_image_path")
+        if source is not None and not isinstance(source, str):
+            raise ValueError("source_image_invalid")
 
     @staticmethod
     def _utc_device_data(data: dict[str, object]) -> dict[str, object]:
         copy = dict(data)
+        copy["contract_number"] = copy.get("contract_number") or ""
+        copy["source_image_path"] = copy.get("source_image_path") or ""
         value = datetime.fromisoformat(str(copy["registered_at"]))
         if value.tzinfo is None:
             value = value.replace(tzinfo=ZoneInfo("Europe/Kyiv"))
@@ -250,11 +314,34 @@ class SerialVisionService:
     def delete_device(self, device_id: int) -> None:
         self._database.delete_device(device_id)
 
-    def devices(self, search: str = "", device_type: str = "", service: str = "", date_from: str = "", date_to: str = "", model_id: int | None = None, operation: str = "", page: int = 1) -> tuple[list[sqlite3.Row], dict[str, int] | None]:
-        return self._database.devices(search, device_type, service, date_from, date_to, model_id, operation, page)
+    def devices(
+        self,
+        search: str = "",
+        device_type: str = "",
+        service: str = "",
+        date_from: str = "",
+        date_to: str = "",
+        model_id: int | None = None,
+        operation: str = "",
+        page: int = 1,
+    ) -> tuple[list[sqlite3.Row], dict[str, int] | None]:
+        return self._database.devices(
+            search, device_type, service, date_from, date_to, model_id, operation, page
+        )
 
-    def all_filtered_devices(self, search: str = "", device_type: str = "", service: str = "", date_from: str = "", date_to: str = "", model_id: int | None = None, operation: str = "") -> list[sqlite3.Row]:
-        rows, _ = self._database.devices(search, device_type, service, date_from, date_to, model_id, operation, 1, 10_000_000)
+    def all_filtered_devices(
+        self,
+        search: str = "",
+        device_type: str = "",
+        service: str = "",
+        date_from: str = "",
+        date_to: str = "",
+        model_id: int | None = None,
+        operation: str = "",
+    ) -> list[sqlite3.Row]:
+        rows, _ = self._database.devices(
+            search, device_type, service, date_from, date_to, model_id, operation, 1, 10_000_000
+        )
         return rows
 
     def export_devices(self, destination: Path, rows: list[sqlite3.Row]) -> None:
@@ -273,7 +360,11 @@ class SerialVisionService:
             operations[period][row["operation_type"]] += 1
             services[row["service"]] += 1
             models[row["model_name"]] += 1
-        return {"operations": dict(sorted(operations.items())), "services": dict(sorted(services.items())), "models": dict(sorted(models.items(), key=lambda item: (-item[1], item[0])))}
+        return {
+            "operations": dict(sorted(operations.items())),
+            "services": dict(sorted(services.items())),
+            "models": dict(sorted(models.items(), key=lambda item: (-item[1], item[0]))),
+        }
 
     def statistics(self) -> list[sqlite3.Row]:
         return self._database.statistics()

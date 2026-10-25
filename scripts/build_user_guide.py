@@ -6,13 +6,10 @@ import re
 from pathlib import Path
 
 from docx import Document
-from docx.enum.section import WD_SECTION
-from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
-
 
 ROOT = Path(__file__).parents[1]
 SOURCE = ROOT / "application" / "serial_vision" / "assets" / "help" / "uk.md"
@@ -116,11 +113,20 @@ def build() -> None:
     intro.paragraph_format.left_indent = Cm(1.2)
     intro.paragraph_format.right_indent = Cm(1.2)
     intro.paragraph_format.line_spacing = 1.2
-    set_font(intro.add_run("Локальний облік обладнання, розпізнавання серійних номерів, MAC-адрес і штрихкодів"), "Aptos", 14, "394B59")
+    set_font(
+        intro.add_run(
+            "Локальний облік обладнання, розпізнавання серійних номерів, MAC-адрес і штрихкодів"
+        ),
+        "Aptos",
+        14,
+        "394B59",
+    )
     document.add_page_break()
 
     extra_source = SOURCE.with_name("uk-extra.md")
-    sections = parse_sections(SOURCE.read_text(encoding="utf-8") + extra_source.read_text(encoding="utf-8"))
+    sections = parse_sections(
+        SOURCE.read_text(encoding="utf-8") + extra_source.read_text(encoding="utf-8")
+    )
     document.add_heading("Зміст", level=1)
     for index, (title_text, _) in enumerate(sections, start=1):
         item = document.add_paragraph(style="Normal")

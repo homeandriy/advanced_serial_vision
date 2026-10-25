@@ -5,7 +5,6 @@ from pathlib import Path
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
 
-
 SPREADSHEET_NAMESPACE = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 RELATIONSHIPS_NAMESPACE = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 
@@ -48,7 +47,10 @@ def _models_sheet_path(archive: ZipFile) -> str:
     relationships = ElementTree.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
     targets = {relation.attrib["Id"]: relation.attrib["Target"] for relation in relationships}
     sheets = workbook.findall(f"{SPREADSHEET_NAMESPACE}sheets/{SPREADSHEET_NAMESPACE}sheet")
-    sheet = next((item for item in sheets if item.attrib.get("name", "").casefold() in {"models", "моделі"}), sheets[0] if sheets else None)
+    sheet = next(
+        (item for item in sheets if item.attrib.get("name", "").casefold() in {"models", "моделі"}),
+        sheets[0] if sheets else None,
+    )
     if sheet is None:
         raise KeyError("worksheet")
     target = targets[sheet.attrib[f"{RELATIONSHIPS_NAMESPACE}id"]].lstrip("/")
@@ -120,8 +122,15 @@ def _value(row: list[str], index: int | None) -> str:
 
 
 def _normalize_type(value: str) -> str | None:
-    return {"modem": "modem", "модем": "modem", "tuner": "tuner", "тюнер": "tuner"}.get(value.strip().casefold())
+    return {"modem": "modem", "модем": "modem", "tuner": "tuner", "тюнер": "tuner"}.get(
+        value.strip().casefold()
+    )
 
 
 def _normalize_service(value: str) -> str | None:
-    return {"internet": "internet", "інтернет": "internet", "television": "television", "телебачення": "television"}.get(value.strip().casefold())
+    return {
+        "internet": "internet",
+        "інтернет": "internet",
+        "television": "television",
+        "телебачення": "television",
+    }.get(value.strip().casefold())

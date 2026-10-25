@@ -2,16 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import subprocess
 import sys
 import tempfile
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Callable
 
 
 @dataclass(frozen=True)
@@ -37,11 +36,19 @@ def check_latest_release(repository: str, current_version: str) -> ReleaseInfo |
     if not version or not _is_newer(version, current_version):
         return None
     installer_asset = next(
-        (asset for asset in payload.get("assets", []) if str(asset.get("name", "")).lower().endswith(".exe")),
+        (
+            asset
+            for asset in payload.get("assets", [])
+            if str(asset.get("name", "")).lower().endswith(".exe")
+        ),
         None,
     )
     linux_asset = next(
-        (asset for asset in payload.get("assets", []) if str(asset.get("name", "")).lower().endswith(".deb")),
+        (
+            asset
+            for asset in payload.get("assets", [])
+            if str(asset.get("name", "")).lower().endswith(".deb")
+        ),
         None,
     )
     return ReleaseInfo(
@@ -59,22 +66,40 @@ ProgressCallback = Callable[[int, int | None, str], None]
 PhaseCallback = Callable[[str], None]
 
 
-def download_update(release: ReleaseInfo, progress_callback: ProgressCallback | None = None, phase_callback: PhaseCallback | None = None) -> Path:
+def download_update(
+    release: ReleaseInfo,
+    progress_callback: ProgressCallback | None = None,
+    phase_callback: PhaseCallback | None = None,
+) -> Path:
     if not release.installer_url:
         raise RuntimeError("automatic_update_unsupported")
     if progress_callback is None and phase_callback is None:
         return _download_installer(release.installer_url, release.installer_sha256 or "")
-    return _download_installer(release.installer_url, release.installer_sha256 or "", progress_callback, phase_callback)
+    return _download_installer(
+        release.installer_url, release.installer_sha256 or "", progress_callback, phase_callback
+    )
 
 
-def download_linux_update(release: ReleaseInfo, progress_callback: ProgressCallback | None = None, phase_callback: PhaseCallback | None = None) -> Path:
+def download_linux_update(
+    release: ReleaseInfo,
+    progress_callback: ProgressCallback | None = None,
+    phase_callback: PhaseCallback | None = None,
+) -> Path:
     if not release.linux_package_url:
         raise RuntimeError("linux_update_unavailable")
     downloads_directory = Path.home() / "Downloads"
     destination_directory = downloads_directory if downloads_directory.is_dir() else None
     if progress_callback is None and phase_callback is None:
-        return _download_package(release.linux_package_url, release.linux_package_sha256 or "", destination_directory)
-    return _download_package(release.linux_package_url, release.linux_package_sha256 or "", destination_directory, progress_callback, phase_callback)
+        return _download_package(
+            release.linux_package_url, release.linux_package_sha256 or "", destination_directory
+        )
+    return _download_package(
+        release.linux_package_url,
+        release.linux_package_sha256 or "",
+        destination_directory,
+        progress_callback,
+        phase_callback,
+    )
 
 
 def launch_update(installer_path: Path, log_path: Path) -> None:
@@ -86,23 +111,50 @@ def launch_update(installer_path: Path, log_path: Path) -> None:
     )
 
 
-def _download_installer(url: str, expected_sha256: str, progress_callback: ProgressCallback | None = None, phase_callback: PhaseCallback | None = None) -> Path:
-    return _download_asset(url, expected_sha256, progress_callback=progress_callback, phase_callback=phase_callback)
+def _download_installer(
+    url: str,
+    expected_sha256: str,
+    progress_callback: ProgressCallback | None = None,
+    phase_callback: PhaseCallback | None = None,
+) -> Path:
+    return _download_asset(
+        url, expected_sha256, progress_callback=progress_callback, phase_callback=phase_callback
+    )
 
 
-def _download_package(url: str, expected_sha256: str, destination_directory: Path | None = None, progress_callback: ProgressCallback | None = None, phase_callback: PhaseCallback | None = None) -> Path:
-    return _download_asset(url, expected_sha256, destination_directory, progress_callback, phase_callback)
+def _download_package(
+    url: str,
+    expected_sha256: str,
+    destination_directory: Path | None = None,
+    progress_callback: ProgressCallback | None = None,
+    phase_callback: PhaseCallback | None = None,
+) -> Path:
+    return _download_asset(
+        url, expected_sha256, destination_directory, progress_callback, phase_callback
+    )
 
 
-def _download_asset(url: str, expected_sha256: str, destination_directory: Path | None = None, progress_callback: ProgressCallback | None = None, phase_callback: PhaseCallback | None = None) -> Path:
-    destination_directory = destination_directory or Path(tempfile.gettempdir()) / "serial-vision-update"
+def _download_asset(
+    url: str,
+    expected_sha256: str,
+    destination_directory: Path | None = None,
+    progress_callback: ProgressCallback | None = None,
+    phase_callback: PhaseCallback | None = None,
+) -> Path:
+    if re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha256) is None:
+        raise RuntimeError("update_checksum_unavailable")
+    destination_directory = (
+        destination_directory or Path(tempfile.gettempdir()) / "serial-vision-update"
+    )
     destination_directory.mkdir(parents=True, exist_ok=True)
     filename = Path(url.split("?", 1)[0]).name or "SerialVision-Setup.exe"
     destination = destination_directory / filename
     request = urllib.request.Request(url, headers={"User-Agent": "Serial-Vision"})
     digest = hashlib.sha256()
     with urllib.request.urlopen(request, timeout=60) as response, destination.open("wb") as target:
-        content_length = response.headers.get("Content-Length") if getattr(response, "headers", None) else None
+        content_length = (
+            response.headers.get("Content-Length") if getattr(response, "headers", None) else None
+        )
         total = int(content_length) if content_length and content_length.isdigit() else None
         downloaded = 0
         while chunk := response.read(1024 * 1024):
@@ -113,7 +165,7 @@ def _download_asset(url: str, expected_sha256: str, destination_directory: Path 
                 progress_callback(downloaded, total, url)
     if phase_callback:
         phase_callback("verifying")
-    if expected_sha256 and digest.hexdigest().lower() != expected_sha256.lower():
+    if digest.hexdigest().lower() != expected_sha256.lower():
         destination.unlink(missing_ok=True)
         raise RuntimeError("update_integrity_failed")
     return destination

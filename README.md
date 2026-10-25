@@ -47,20 +47,45 @@
 
 ## Швидкий запуск для розробки
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\python.exe -m serial_vision.main
+Потрібні Python 3.11+ і [uv](https://docs.astral.sh/uv/getting-started/installation/).
+Версію Python для розробки зафіксовано у `.python-version`, а всі залежності — у
+`uv.lock`. Команди однакові для Linux/WSL і Windows:
+
+```bash
+uv sync --locked
+uv run --locked serial-vision
 ```
 
-У Linux використовуйте еквівалентні команди з `python3` і `.venv/bin/python`.
+У Linux/WSL також доступні `make install` і `make run`. Linux і Windows повинні
+мати окремі `.venv`; не використовуйте Windows-середовище як Linux runtime.
 
 ## Перевірки
 
-```powershell
-.\.venv\Scripts\python.exe -m compileall -q application
-.\.venv\Scripts\python.exe -m unittest discover -s application/tests -v
+```bash
+make verify
 ```
+
+Без Make, зокрема у Windows:
+
+```bash
+uv lock --check
+uv run --locked python -m compileall -q application
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+uv run --locked mypy
+uv run --locked python -m unittest discover -s application/tests -v
+```
+
+`make format` застосовує Ruff fixes і форматування. Перевірка типів поки охоплює
+ядро: каталог і редагування фото, стратегії розпізнавання, оновлення та версію;
+повний перелік визначено в `[tool.mypy]`. Qt UI додається поступово.
+CI виконує перевірки для PR і push у `main`: Linux з Python 3.11/3.13 та Windows
+з Python 3.11. Релізні збірки також використовують `uv.lock` і ці перевірки.
+
+Після зміни залежностей виконайте `make lock` (або `uv lock`), потім
+`uv sync --locked` і `make verify`. Додавайте оновлений `uv.lock` разом із
+`pyproject.toml` до одного набору змін. Для пакування потрібен
+`uv sync --locked --extra build`.
 
 ## Встановлення та релізи
 

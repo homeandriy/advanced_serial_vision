@@ -70,6 +70,22 @@ model in v0.1.0; the Windows user who launches it is the operator.
 
 ## Validation and guards
 
+- Closing the main window or choosing Exit stops the camera, update timers and local
+  API, requests cooperative worker cancellation, and keeps the Qt event loop alive
+  until running workers finish. It then exits and releases the single-instance lock.
+- AI results are tied to the selected photo generation and profile. Changing or
+  clearing the photo discards stale replies and clears the previous AI result.
+- Unreadable photos produce recognition feedback and release the busy state;
+  operators can retry or select another photo without restarting the application.
+- Desktop and API writes require non-empty text, a valid operation, an existing
+  model, a valid timestamp and a contract of at most 20 characters. Missing records
+  return API 404; malformed payloads return 422. An omitted source-photo path on
+  creation means no photo; on update it preserves the existing reference.
+- Date filters include the entire final local day, including fractional seconds,
+  and exclude the next local midnight, also on daylight-saving transition days.
+- Equipment filter labels are associated with their controls and have localized
+  accessible names for keyboard and assistive-technology users.
+
 - Image paths must resolve inside the selected image folder.
 - A record requires non-empty recognized text and a known model.
 - QR and Code 128 generation require non-empty text. The generated preview uses only the value currently entered by the operator; it is not persisted unless the operator explicitly saves its PNG.
@@ -99,6 +115,23 @@ editable options together; AI-profile CRUD remains a separate immediate action.
 The update source is not displayed or editable.
 
 ## Local diagnostics and updates
+
+Both built-in update downloaders require a SHA-256 digest containing exactly 64
+hexadecimal characters. A missing or malformed digest blocks the download before
+any network request or file creation and shows a localized error. A checksum
+mismatch removes the rejected downloaded file and never starts an installer.
+
+The standalone Tk updater detects the Windows UI language on startup (Ukrainian,
+English or Polish, with Ukrainian fallback) and offers an Automatic/system option
+and explicit language choices. Switching language updates controls, the current
+status and the process log without interrupting a download. Its embedded updater
+translations mirror the updater keys in `serial_vision.i18n.TEXT`, verified by tests,
+so the recovery script still works independently of the installed application.
+Recognition, image validation and AI errors use stable translation keys, rendered
+in the interface language at the presentation boundary. Local API authentication
+and rate-limit errors use the application's configured language while retaining
+the same HTTP statuses and JSON response structure. Startup-log retries are logged
+in the selected interface language.
 
 Advanced Serial Vision uses its own per-user application-data directory under the `homeandriy` organization, separate from the previous application. Startup attempts to write timestamped records to `startup.log` in that directory. If the OS denies access, startup continues without writing the log, retries once after the window appears, and shows the operator a modal message with the exact log folder and OS error. The Help menu can open that file when available. The fixed official GitHub repository is checked in a worker thread one minute after startup, every four hours while the application remains open, and on demand. When a newer release exists, the operator sees a dialog with the release changelog and may install it now or choose Later; choosing Later makes no download or installation and suppresses repeated automatic prompts for that version during the current session. A manual check can still show the release. The update progress window displays the source URL, three steps and a real 0–50% download progress value, then preparation/verification through 75% and application hand-off at 100%. Its technical log is always visible below the progress bar and can also be opened as a file; update logs older than five days are removed. On Windows, the installed EXE offers Download and install. The newer EXE is downloaded to a temporary folder and verified against its SHA-256 release digest while the application remains open. Only after successful verification does the application start the visible Inno Setup installer with its log directed to the update-log file, then exits so the installer can replace its executable without a process lock. The installer launches the installed application at the end of a completed interactive installation. A per-user lock prevents a second application window from starting while an instance is active. The installer uses the stable AppId and does not touch per-user SQLite data. On the next start, forward-only SQLite migrations are applied transactionally using PRAGMA user_version; migrations never delete or recreate the database. On Ubuntu and other supported Linux desktops, the dialog offers Download DEB. The checked DEB file is saved to the user's Downloads directory when available and opened in the OS package installer; that installer requests privileges and handles any need to close the application. Other platforms can open the published release page.
 Packaged builds carry `VERSION` inside the bundle and never rely on their current working directory to show the installed version or check updates.

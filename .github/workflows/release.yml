@@ -33,12 +33,18 @@ jobs:
     runs-on: windows-latest
     env:
       VERSION: ${{ needs.version.outputs.value }}
+      QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.10'
+          enable-cache: true
 
       - name: Set build version
         shell: pwsh
@@ -47,13 +53,20 @@ jobs:
       - name: Install Python dependencies and test
         shell: pwsh
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install '.[build]'
-          python -m unittest discover -s application/tests
+          uv sync --locked --extra build
+          if ($LASTEXITCODE -ne 0) { throw "Dependency sync failed" }
+          uv run --locked --extra build ruff check .
+          if ($LASTEXITCODE -ne 0) { throw "Ruff lint failed" }
+          uv run --locked --extra build ruff format --check .
+          if ($LASTEXITCODE -ne 0) { throw "Ruff formatting failed" }
+          uv run --locked --extra build mypy
+          if ($LASTEXITCODE -ne 0) { throw "Type checks failed" }
+          uv run --locked --extra build python -m unittest discover -s application/tests
+          if ($LASTEXITCODE -ne 0) { throw "Tests failed" }
 
       - name: Build portable executable
         shell: pwsh
-        run: python -m PyInstaller --noconfirm --clean tools/serial-vision.spec
+        run: uv run --locked --extra build python -m PyInstaller --noconfirm --clean tools/serial-vision.spec
 
       - name: Install Windows packagers
         shell: pwsh
@@ -99,6 +112,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ needs.version.outputs.value }}
+      QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v4
 
@@ -111,18 +125,25 @@ jobs:
         with:
           python-version: '3.11'
 
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.10'
+          enable-cache: true
+
       - name: Set build version
         run: printf '%s' "$VERSION" > VERSION
 
       - name: Install Python dependencies and test
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install '.[build]'
-          python -m unittest discover -s application/tests
+          uv sync --locked --extra build
+          uv run --locked --extra build ruff check .
+          uv run --locked --extra build ruff format --check .
+          uv run --locked --extra build mypy
+          uv run --locked --extra build python -m unittest discover -s application/tests
 
       - name: Build Linux executable and Debian package
         run: |
-          python -m PyInstaller --noconfirm --clean tools/serial-vision.spec
+          uv run --locked --extra build python -m PyInstaller --noconfirm --clean tools/serial-vision.spec
           chmod +x tools/build-deb.sh
           tools/build-deb.sh "$VERSION" dist/SerialVision
 

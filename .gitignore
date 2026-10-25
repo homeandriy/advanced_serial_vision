@@ -1,11 +1,13 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-*/
 .idea/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+.uv-cache/
 build/
 dist/
 *.spec
 data/
-

@@ -9,7 +9,11 @@ from PIL import Image
 from rapidocr import RapidOCR
 
 from serial_vision.barcode import extract_printed_codes
-from serial_vision.recognition_strategies import RecognitionOptions, fallback_strategies, normalized_image
+from serial_vision.recognition_strategies import (
+    RecognitionOptions,
+    fallback_strategies,
+    normalized_image,
+)
 
 
 class RapidOcrRecognizer:
@@ -36,7 +40,7 @@ class RapidOcrRecognizer:
                         if quality > best_score:
                             text, best_score = candidate, quality
         if not text:
-            raise RuntimeError("OCR не знайшов текст на цьому зображенні.")
+            raise RuntimeError("ocr_no_text")
         return text
 
     @staticmethod
@@ -65,7 +69,10 @@ class RapidOcrRecognizer:
 
     @staticmethod
     def _score(text: str) -> int:
-        return sum(len(value) for value in re.findall(r"(?:[A-Z][A-Z0-9:._-]{4,}|[0-9][A-Z0-9:._-]{4,})", text))
+        return sum(
+            len(value)
+            for value in re.findall(r"(?:[A-Z][A-Z0-9:._-]{4,}|[0-9][A-Z0-9:._-]{4,})", text)
+        )
 
     def _relevant(self, text: str) -> str:
         return "\n".join(line for line in text.splitlines() if self._score(line) > 0)

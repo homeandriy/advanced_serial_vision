@@ -36,7 +36,9 @@ class ClarityStrategy:
         yield gray.filter(ImageFilter.UnsharpMask(radius=1.2, percent=130, threshold=3))
         scale = min(2.0, 3000 / max(gray.size))
         if scale > 1.2:
-            enlarged = gray.resize((int(gray.width * scale), int(gray.height * scale)), Image.Resampling.LANCZOS)
+            enlarged = gray.resize(
+                (int(gray.width * scale), int(gray.height * scale)), Image.Resampling.LANCZOS
+            )
             yield enlarged.filter(ImageFilter.UnsharpMask(radius=1.4, percent=125, threshold=3))
 
 

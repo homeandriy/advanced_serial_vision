@@ -4,11 +4,18 @@ import re
 from importlib.resources import files
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDialog, QHBoxLayout, QListWidget, QListWidgetItem, QTextBrowser, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QListWidget,
+    QListWidgetItem,
+    QTextBrowser,
+    QVBoxLayout,
+    QWidget,
+)
 
 from serial_vision.i18n import t
 from serial_vision.ui.buttons import button
-
 
 SECTION_PATTERN = re.compile(r"<!-- section: ([a-z-]+) -->\s*")
 
@@ -43,7 +50,9 @@ class HelpDialog(QDialog):
         actions.addStretch()
         actions.addWidget(close)
         layout.addLayout(actions)
-        target_row = next((index for index, item in enumerate(self.sections) if item[0] == section_id), 0)
+        target_row = next(
+            (index for index, item in enumerate(self.sections) if item[0] == section_id), 0
+        )
         self.contents.setCurrentRow(target_row)
 
     @staticmethod
@@ -57,7 +66,10 @@ class HelpDialog(QDialog):
         sections: list[tuple[str, str, str]] = []
         for index in range(1, len(parts), 2):
             identifier, body = parts[index], parts[index + 1].strip()
-            title = next((line.removeprefix("## ") for line in body.splitlines() if line.startswith("## ")), identifier)
+            title = next(
+                (line.removeprefix("## ") for line in body.splitlines() if line.startswith("## ")),
+                identifier,
+            )
             sections.append((identifier, title, body))
         return sections
 

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
 import unittest
+from datetime import datetime
 
-from serial_vision.code_images import generated_code_filename, generate_code_png
+from serial_vision.code_images import generate_code_png, generated_code_filename
 
 
 class CodeImagesTest(unittest.TestCase):

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from io import BytesIO
-import re
 from zoneinfo import ZoneInfo
 
 import qrcode
@@ -18,7 +18,9 @@ def normalized_code_type(code_type: str) -> str:
     raise ValueError("code_type_invalid")
 
 
-def generated_code_filename(value: str, code_type: str, generated_at: datetime | None = None) -> str:
+def generated_code_filename(
+    value: str, code_type: str, generated_at: datetime | None = None
+) -> str:
     normalized_type = normalized_code_type(code_type)
     safe_value = re.sub(r"[^A-Za-z0-9]", "", value.strip()) or "code"
     timestamp = (generated_at or datetime.now(ZoneInfo("Europe/Kyiv"))).strftime("%H_%M_%d_%m_%Y")

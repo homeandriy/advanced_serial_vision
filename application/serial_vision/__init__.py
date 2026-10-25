@@ -1,2 +1,1 @@
 """Serial Vision desktop application."""
-

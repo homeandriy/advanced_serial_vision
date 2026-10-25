@@ -33,7 +33,7 @@ class ImageEditSession:
 
     def rotate_degrees(self, degrees: int) -> None:
         if not -180 <= degrees <= 180:
-            raise ValueError("Rotation must be between -180 and 180 degrees")
+            raise ValueError("editor_rotation_range")
         if degrees == 0:
             return
         width, height = self.size
@@ -43,10 +43,18 @@ class ImageEditSession:
             rotated_width, rotated_height = width, height
         else:
             radians = math.radians(degrees)
-            rotated_width = math.ceil(abs(width * math.cos(radians)) + abs(height * math.sin(radians)))
-            rotated_height = math.ceil(abs(width * math.sin(radians)) + abs(height * math.cos(radians)))
-        if rotated_width > 12000 or rotated_height > 12000 or rotated_width * rotated_height > 80_000_000:
-            raise ValueError("The rotated image would be too large")
+            rotated_width = math.ceil(
+                abs(width * math.cos(radians)) + abs(height * math.sin(radians))
+            )
+            rotated_height = math.ceil(
+                abs(width * math.sin(radians)) + abs(height * math.cos(radians))
+            )
+        if (
+            rotated_width > 12000
+            or rotated_height > 12000
+            or rotated_width * rotated_height > 80_000_000
+        ):
+            raise ValueError("editor_rotation_invalid")
         if degrees == 90:
             self.rotate_clockwise()
         elif degrees == -90:
@@ -55,29 +63,40 @@ class ImageEditSession:
             self._working = self._working.transpose(Image.Transpose.ROTATE_180)
         else:
             self._working = self._working.rotate(
-                -degrees, resample=Image.Resampling.BICUBIC, expand=True,
+                -degrees,
+                resample=Image.Resampling.BICUBIC,
+                expand=True,
                 fillcolor=self._working.getpixel((0, 0)),
             )
 
     def crop(self, x: int, y: int, width: int, height: int) -> None:
         image_width, image_height = self.size
-        if x < 0 or y < 0 or width < 2 or height < 2 or x + width > image_width or y + height > image_height:
-            raise ValueError("Invalid crop rectangle")
+        if (
+            x < 0
+            or y < 0
+            or width < 2
+            or height < 2
+            or x + width > image_width
+            or y + height > image_height
+        ):
+            raise ValueError("editor_crop_invalid")
         self._working = self._working.crop((x, y, x + width, y + height))
 
     def resize(self, percent: int) -> None:
         if not 25 <= percent <= 300:
-            raise ValueError("Resize percentage must be between 25 and 300")
+            raise ValueError("editor_resize_range")
         width = max(1, round(self.size[0] * percent / 100))
         height = max(1, round(self.size[1] * percent / 100))
         if width > 12000 or height > 12000 or width * height > 80_000_000:
-            raise ValueError("The resized image would be too large")
+            raise ValueError("editor_resize_invalid")
         self._working = self._working.resize((width, height), Image.Resampling.LANCZOS)
 
-    def set_adjustments(self, *, brightness: int, contrast: int, color: int, sharpness: int) -> None:
+    def set_adjustments(
+        self, *, brightness: int, contrast: int, color: int, sharpness: int
+    ) -> None:
         values = (brightness, contrast, color, sharpness)
         if any(not 0 <= value <= 200 for value in values):
-            raise ValueError("Image adjustment must be between 0 and 200")
+            raise ValueError("editor_adjustment_range")
         self.brightness, self.contrast, self.color, self.sharpness = values
 
     def _adjusted(self, image: Image.Image) -> Image.Image:

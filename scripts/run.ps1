@@ -1,3 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-& (Join-Path $projectRoot '.venv\Scripts\python.exe') -m serial_vision.main
+Push-Location $projectRoot
+try {
+  uv run --locked serial-vision
+  if ($LASTEXITCODE -ne 0) { throw "Serial Vision failed: $LASTEXITCODE" }
+} finally { Pop-Location }
