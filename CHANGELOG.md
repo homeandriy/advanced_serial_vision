@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+## v0.7.3 - 2026-10-26
+
+### Added
+
+- The standalone Windows updater supports Ukrainian, English and Polish, automatic system-language detection, and switching language without interrupting download progress or losing the process log.
+- Pull-request and main-branch CI checks for Linux and Windows, with Ruff lint/format validation, initial core type checks and regression tests.
+- A prioritized technical-debt register with completion criteria and a record of resolved issues.
+
+### Changed
+
+- Development, tests and release packaging use uv with a shared dependency lockfile and Makefile commands.
+- Recognition, image-editing, API authentication and startup-log retry messages are localized; equipment filters expose associated accessible labels.
+
+### Fixed
+
+- Exit now stops camera/API activity and waits for background workers before terminating the application.
+- AI responses from a previous photo cannot replace the result of the selected photo.
+- Unreadable photographs no longer leave recognition controls blocked.
+- Equipment writes reject invalid data, updates to missing records return 404, and omitted photo references are preserved during updates.
+- Date filters include fractional seconds at the end of the selected day, including daylight-saving transition days.
+- Python packages include the standalone camera/scan icons and exclude the test package.
+
+### Security
+
+- Built-in Windows and Linux update downloads require a valid SHA-256 digest before fetching a package; checksum mismatches reject the downloaded file and prevent installation.
+- Local API request bodies must be JSON objects within the configured size limit.
+
 ## v0.7.2 - 2026-10-14
 
 ### Added

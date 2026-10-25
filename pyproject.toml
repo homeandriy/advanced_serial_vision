@@ -42,6 +42,9 @@ version = {file = ["VERSION"]}
 [tool.setuptools.package-data]
 serial_vision = ["assets/*.qss", "assets/*.png", "assets/*.ico", "assets/*.html", "assets/icons/*.svg", "assets/icons/*/*.svg", "assets/help/*.md"]
 
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { file = "VERSION" }]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
