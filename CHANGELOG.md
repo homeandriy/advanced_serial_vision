@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## v0.7.4 - 2026-10-26
+
+### Fixed
+
+- Type checks follow the active Python interpreter, so Python 3.13 CI can read the newer NumPy type stubs. Python 3.11 remains covered by its own CI jobs.
+
 ## v0.7.3 - 2026-10-26
 
 ### Added
