@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import os
 import tempfile
 import unittest
@@ -32,6 +33,27 @@ class GalleryTest(unittest.TestCase):
         self.assertEqual(3, len(self.catalog.images()))
         self.catalog.invalidate()
         self.assertEqual(4, len(self.catalog.images()))
+
+    def test_root_is_canonical_before_owned_path_comparison(self) -> None:
+        child = self.root / "child"
+        child.mkdir()
+        alias = child / ".."
+        catalog = ImageCatalog(alias)
+        self.assertEqual(self.root.resolve(), catalog.directory)
+        self.assertEqual(3, len(catalog.images()))
+
+    @unittest.skipUnless(os.name == "nt", "Windows short paths")
+    def test_windows_short_root_accepts_its_owned_photos(self) -> None:
+        get_short_path = ctypes.windll.kernel32.GetShortPathNameW
+        get_short_path.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint]
+        get_short_path.restype = ctypes.c_uint
+        buffer = ctypes.create_unicode_buffer(32768)
+        length = get_short_path(str(self.root), buffer, len(buffer))
+        if not length or length >= len(buffer) or buffer.value == str(self.root):
+            self.skipTest("8.3 aliases are unavailable on this volume")
+        catalog = ImageCatalog(Path(buffer.value))
+        self.assertEqual(self.root.resolve(), catalog.directory)
+        self.assertEqual(3, len(catalog.images()))
 
     def test_cached_thumbnail_avoids_decoding_and_changed_file_gets_new_preview(self) -> None:
         cache = ThumbnailCache()

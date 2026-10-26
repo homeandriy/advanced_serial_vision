@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- Normalize catalog roots before ownership checks, including Windows short paths and folders containing parent-directory segments.
 - Save settings atomically and restore the previous local API configuration after a failed write, commit or port change; retain unsaved form changes on failure.
 - Reject stale background gallery/statistics responses when the operator changes a folder or grouping.
 

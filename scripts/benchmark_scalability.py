@@ -47,6 +47,7 @@ def measure(callback, repeats=3):
 def legacy_gallery(folder: Path):
     # Former ImageCatalog.page + synchronous QPixmap decoding in refresh_images.
     QPixmapCache.clear()
+    folder = folder.resolve()
     files = [
         path
         for path in folder.rglob("*")

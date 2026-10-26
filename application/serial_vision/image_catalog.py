@@ -20,7 +20,7 @@ class CatalogImage:
 
 class ImageCatalog:
     def __init__(self, directory: Path | None) -> None:
-        self.directory = directory.absolute() if directory else None
+        self.directory = directory.resolve() if directory else None
         self._snapshot: tuple[CatalogImage, ...] | None = None
         self._revision = 0
         self._lock = Lock()

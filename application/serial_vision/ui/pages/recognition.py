@@ -260,6 +260,7 @@ class RecognitionPage(Page):
         if self._closing:
             return
         directory = self.service.image_directory()
+        directory = directory.resolve() if directory else None
         if directory != self.catalog.directory:
             self.catalog = ImageCatalog(directory)
         elif reindex:
