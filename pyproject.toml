@@ -18,16 +18,23 @@ dependencies = [
     "onnxruntime>=1.20,<2",
     "zxing-cpp>=2.3,<3",
     "tzdata>=2025.2",
+    "argon2-cffi>=25,<26",
+    "openpyxl>=3.1,<4",
 ]
 
 [project.optional-dependencies]
 build = ["pyinstaller>=6.11,<7"]
 
 [dependency-groups]
-dev = ["ruff>=0.14,<0.15", "mypy>=1.18,<2"]
+dev = [
+    "ruff>=0.14,<0.15",
+    "mypy>=1.18,<2",
+    "cryptography>=45,<51",
+]
 
 [project.scripts]
 serial-vision = "serial_vision.main:main"
+serial-vision-server = "serial_vision.warehouse.server:main"
 
 [tool.setuptools]
 package-dir = {"" = "application"}

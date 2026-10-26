@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 UV ?= uv
 
-.PHONY: help install run check test lint format typecheck verify lock updater-translations check-translations check-text install-hooks
+.PHONY: help install run check test lint format typecheck verify lock updater-translations check-translations check-text install-hooks build-server
 
 help:
 	@echo "make install  Sync locked runtime and development dependencies"
@@ -16,6 +16,7 @@ help:
 	@echo "make updater-translations Generate the standalone updater catalog"
 	@echo "make check-text Check UTF-8 without BOM and LF in tracked text files"
 	@echo "make install-hooks Enable the pre-commit text check"
+	@echo "make build-server Build the headless warehouse server executable"
 
 install:
 	$(UV) sync --locked
@@ -59,3 +60,6 @@ check-text:
 
 install-hooks:
 	git config core.hooksPath .githooks
+
+build-server:
+	$(UV) run --locked --extra build pyinstaller --noconfirm tools/warehouse-server.spec

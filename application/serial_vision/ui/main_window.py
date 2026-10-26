@@ -43,9 +43,11 @@ from serial_vision.ui.pages.models import ModelsPage
 from serial_vision.ui.pages.recognition import RecognitionPage
 from serial_vision.ui.pages.settings import SettingsPage
 from serial_vision.ui.pages.statistics import StatisticsPage
+from serial_vision.ui.pages.warehouses import WarehousesPage
 from serial_vision.ui.theme import apply_theme
 from serial_vision.ui.update_controller import UpdateController
 from serial_vision.version import app_version
+from serial_vision.warehouse.client import WarehouseClient
 
 
 class MainWindow(QMainWindow):
@@ -70,6 +72,14 @@ class MainWindow(QMainWindow):
         self.equipment_page = EquipmentPage(
             service, self.ui_locale, lambda: self.recognition_page.selected_image, self
         )
+        self.warehouse_client = WarehouseClient(
+            service._database.path.parent / "warehouses.sqlite3",
+            os.environ.get("SERIAL_VISION_WAREHOUSE_URL", ""),
+            Path(os.environ["SERIAL_VISION_WAREHOUSE_CA_FILE"])
+            if os.environ.get("SERIAL_VISION_WAREHOUSE_CA_FILE")
+            else None,
+        )
+        self.warehouses_page = WarehousesPage(service, self.ui_locale, self.warehouse_client, self)
         self.models_page = ModelsPage(service, self.ui_locale, self)
         self.statistics_page = StatisticsPage(service, self.ui_locale, self)
         self.camera_page = CameraPage(service, self.ui_locale, self)
@@ -78,6 +88,7 @@ class MainWindow(QMainWindow):
         self.pages = (
             self.recognition_page,
             self.equipment_page,
+            self.warehouses_page,
             self.models_page,
             self.statistics_page,
             self.camera_page,
@@ -89,6 +100,7 @@ class MainWindow(QMainWindow):
             (
                 "recognition",
                 "equipment",
+                "warehouses",
                 "models",
                 "statistics",
                 "scan",
@@ -99,6 +111,7 @@ class MainWindow(QMainWindow):
             self.tabs.addTab(page, self.tab_icon(name), self.translate(name))
             page.help_requested.connect(self.show_help)
             page.record_requested.connect(self.equipment_page.open_equipment_dialog)
+            page.warehouse_requested.connect(self.open_warehouse_receipt)
         self.api_page.setEnabled(service.api_enabled())
         self.models_page.changed.connect(self.equipment_page.refresh_model_filter)
         self.models_page.changed.connect(self.equipment_page.refresh_equipment)
@@ -108,7 +121,10 @@ class MainWindow(QMainWindow):
         self.settings_page.agents_changed.connect(self.recognition_page.refresh_agents)
         self.settings_page.saved.connect(self.settings_applied)
         self.settings_page.dirty_changed.connect(self.settings_dirty)
+        self.warehouses_page.session_changed.connect(self.warehouse_permissions)
         self.tabs.currentChanged.connect(self.on_tab_changed)
+        if self.warehouse_client.requires_account_hint():
+            self.warehouse_permissions(False, True)
         self.updates = UpdateController(service, self.ui_locale, self)
         self.updates.close_requested.connect(self.close)
         self.create_tray()
@@ -119,7 +135,7 @@ class MainWindow(QMainWindow):
                 f"{self.translate('developer')}  •  {self.translate('version', version=app_version())}"
             )
         )
-        if service.api_enabled():
+        if service.api_enabled() and not self.warehouse_client.requires_account_hint():
             try:
                 self.local_api.start()
             except OSError as error:
@@ -143,7 +159,9 @@ class MainWindow(QMainWindow):
         self.tabs.setTabText(index, self.translate("settings") + (" *" if dirty else ""))
 
     def settings_applied(self, current: SettingsValues, previous: SettingsValues) -> None:
-        self.api_page.setEnabled(current.api_enabled)
+        self.warehouse_permissions(
+            self.warehouses_page.user.get("role") == "admin", self.warehouses_page.initialized
+        )
         if current.image_directory != previous.image_directory:
             self.recognition_page.image_page = 1
             self.recognition_page.clear_image_selection()
@@ -157,6 +175,7 @@ class MainWindow(QMainWindow):
                     (
                         "recognition",
                         "equipment",
+                        "warehouses",
                         "models",
                         "statistics",
                         "scan",
@@ -167,7 +186,27 @@ class MainWindow(QMainWindow):
                     self.tabs.setTabIcon(index, self.tab_icon(name))
                 apply_theme(app, current.theme)
 
+    def open_warehouse_receipt(self, serial: str) -> None:
+        self.tabs.setCurrentWidget(self.warehouses_page)
+        self.warehouses_page.prepare_receipt(serial)
+
+    def warehouse_permissions(self, admin: bool, initialized: bool) -> None:
+        initialized = initialized or self.warehouse_client.requires_account_hint()
+        allowed = not self.warehouse_client.server_url and (not initialized or admin)
+        self.api_page.setEnabled(allowed and self.service.api_enabled())
+        self.settings_page.api_enabled.setEnabled(allowed)
+        self.settings_page.api_port.setEnabled(allowed)
+        if not allowed:
+            self.local_api.stop()
+        elif self.service.api_enabled() and self.local_api.server is None:
+            try:
+                self.local_api.start()
+            except OSError as error:
+                self.statusBar().showMessage(self.translate("api_start_failed", error=str(error)))
+
     def on_tab_changed(self, _index: int) -> None:
+        if self.tabs.currentWidget() is self.warehouses_page:
+            self.warehouses_page.activate()
         if self.tabs.currentWidget() is not self.camera_page:
             self.camera_page.stop_camera()
 
@@ -182,6 +221,7 @@ class MainWindow(QMainWindow):
             self.local_api.stop()
             self.recognition_page.begin_shutdown()
             self.statistics_page.begin_shutdown()
+            self.warehouses_page.begin_shutdown()
             self.setEnabled(False)
             self.statusBar().showMessage(self.translate("shutdown_wait"))
         workers = [worker for worker in self.findChildren(QThread) if worker.isRunning()]
@@ -250,6 +290,7 @@ class MainWindow(QMainWindow):
             (
                 "recognition",
                 "equipment",
+                "warehouses",
                 "models",
                 "statistics",
                 "scan",

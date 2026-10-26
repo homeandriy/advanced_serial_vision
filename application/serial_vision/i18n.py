@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QLocale
+from serial_vision.warehouse.translations import WAREHOUSE_TEXT
 
 SUPPORTED_LOCALES = ("uk", "en", "pl")
 
 
 def system_locale() -> str:
+    from PySide6.QtCore import QLocale
+
     candidate = QLocale.system().name().split("_", 1)[0].lower()
     return candidate if candidate in SUPPORTED_LOCALES else "uk"
 
@@ -248,6 +250,7 @@ _uk.update(
         "model_service_invalid": "Оберіть послугу інтернет або телебачення.",
     }
 )
+
 _en.update(
     {
         "shutdown_wait": "Finishing background operations before exiting…",
@@ -282,6 +285,9 @@ _pl.update(
 )
 
 TEXT = {"uk": _uk, "en": _en, "pl": _pl}
+
+for _warehouse_locale, _warehouse_catalog in WAREHOUSE_TEXT.items():
+    TEXT[_warehouse_locale].update(_warehouse_catalog)
 for _locale, _values in TEXT.items():
     _values.setdefault("open", {"en": "Open", "pl": "Otwórz"}.get(_locale, "Відкрити"))
     _values.setdefault("exit", {"en": "Exit", "pl": "Wyjdź"}.get(_locale, "Вийти"))

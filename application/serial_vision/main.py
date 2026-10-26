@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ctypes
+import os
 import sys
 from pathlib import Path
 
@@ -14,6 +16,15 @@ from serial_vision.ui.main_window import MainWindow
 from serial_vision.ui.theme import apply_theme
 
 
+def instance_lock_name() -> str:
+    if os.name != "nt":
+        return "serial-vision.lock"
+    session_id = ctypes.c_ulong()
+    if not ctypes.windll.kernel32.ProcessIdToSessionId(os.getpid(), ctypes.byref(session_id)):
+        raise OSError("Cannot identify the Windows session")
+    return f"serial-vision-session-{session_id.value}.lock"
+
+
 def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Advanced Serial Vision")
@@ -23,7 +34,7 @@ def main() -> int:
         QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
     )
     service = SerialVisionService(Database(data_directory / "serial-vision.sqlite3"))
-    instance_lock = QLockFile(str(data_directory / "serial-vision.lock"))
+    instance_lock = QLockFile(str(data_directory / instance_lock_name()))
     instance_lock.setStaleLockTime(0)
     if not instance_lock.tryLock(0):
         QMessageBox.information(

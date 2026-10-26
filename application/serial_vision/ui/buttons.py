@@ -24,6 +24,7 @@ BUTTONS: dict[str, QStyle.StandardPixmap] = {
     "download": QStyle.StandardPixmap.SP_ArrowDown,
     "recognition": QStyle.StandardPixmap.SP_FileDialogContentsView,
     "equipment": QStyle.StandardPixmap.SP_DriveHDIcon,
+    "warehouses": QStyle.StandardPixmap.SP_DirIcon,
     "models": QStyle.StandardPixmap.SP_FileDialogDetailedView,
     "statistics": QStyle.StandardPixmap.SP_FileDialogInfoView,
     "settings": QStyle.StandardPixmap.SP_FileDialogListView,

@@ -11,7 +11,8 @@ guards are in [equipment-recognition.md](equipment-recognition.md).
 - `ui/main_window.py` owns navigation, cross-screen signal connections, first-run
   setup, application menus and shutdown. Independent QWidget screens in
   `ui/pages/` own recognition, equipment, models, statistics, camera, API and
-  settings. Screens use application services; they contain no SQL or direct OCR.
+  settings, plus authenticated warehouse accounting. Screens use application
+  services; they contain no SQL or direct OCR.
 - `ui/pages/base.py` provides shared presentation helpers and signals requesting
   help or equipment registration. Screens do not reach through the main window
   into another screen. Equipment receives a callback for the selected source photo.
@@ -99,6 +100,16 @@ Run `make updater-translations` after edits; `make check-translations` and CI
 detect stale generated text. It still runs without the installed application.
 
 ## Development and verification
+
+The warehouse extension is a separate bounded context under `warehouse/`: its own
+schema v1 (12 tables), transactional repositories, server-side authorization and
+an asynchronous desktop client. Local mode creates its database only when the
+Warehouses tab is opened. RDP mode uses one TLS service; desktops never open the
+shared SQLite file and do not fall back to private copies when disconnected.
+Windows instance locks are scoped by Session ID. Bootstrap protection, roles,
+password replacement, serial ledgers, Excel, administrative API/translations and
+Windows-service deployment are documented in
+[warehouse-accounting.md](warehouse-accounting.md).
 
 `pyproject.toml`, `.python-version` and `uv.lock` define reproducible environments.
 Use `make install`, `make run`, `make format` and `make verify`; override `UV`

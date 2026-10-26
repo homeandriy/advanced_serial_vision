@@ -15,6 +15,21 @@ model in v0.1.0; the Windows user who launches it is the operator.
 
 ## Flow and state changes
 
+Warehouse extension: opening the application remains anonymous. Opening Warehouses
+requires a separate application account; the first local account is administrator.
+Shared RDP clients use one explicitly configured loopback warehouse service and
+never open its database files. First-administrator setup on that service also
+requires the bootstrap key held by the Windows administrator. New accounts receive
+temporary passwords, must replace them at first login, and cannot use warehouse
+operations or API tokens until replacement. Roles are storekeeper (assigned
+warehouses), manager (all warehouses) and administrator (also users/API/translations).
+Receipts, issues and transfers are an immutable serial-number ledger, separate
+from existing equipment records. Transfers update both sides atomically; stock
+cannot become negative or place one serial on two warehouses. Responsible-person
+changes are historical, and Excel import validates the complete batch before commit.
+Existing local equipment operations remain unchanged and do not grant warehouse
+access. See warehouse-accounting.md for the full permission and RDP contract.
+
 1. The operator selects a photo from its dated preview card. OCR and barcode recognition start automatically; their result fields stay locked until the processing finishes. The original photo is processed first with the previous decoder. If it yields no barcode, enabled fallback strategies try right-angle rotations and then moderate contrast/sharpness enhancement. OCR keeps a sufficiently clear original result; weak results are compared with the enabled temporary variants using label and code evidence. A barcode result from the original photo takes priority over processed candidates. When a blurred Code 128 cannot be decoded directly, the barcode panel also identifies serial/MAC-like values read from its printed label as `Label text (OCR)`. The source photo remains unchanged.
 2. Settings has two independent checkboxes for automatic right-angle rotations and enhancement of low-contrast or soft photos. Both are enabled by default; disabling both restores original-only recognition. OCR and barcode processing create temporary in-memory variants only. Strong perspective distortion, clipped bars, and true motion blur can destroy information that processing cannot recover; operators must still verify values or retake photos.
 3. The operator can generate a QR code or a Code 128 barcode from the current serial/MAC/text field before saving, or from the compact QR/barcode actions of an existing equipment row. Preview titles identify the code value; barcode titles also identify the Code 128 technology. The preview may be saved as a PNG named `qrcode_<sanitized-code>_<H_M_d_m_Y>.png` or `barcode_<sanitized-code>_<H_M_d_m_Y>.png`; generating or saving a code never changes the equipment record.

@@ -1,0 +1,15 @@
+<service>
+  <id>SerialVisionWarehouses</id>
+  <name>Serial Vision Warehouse Service</name>
+  <description>Shared authenticated warehouse accounting for RDP desktop clients.</description>
+  <executable>%BASE%\SerialVisionServer\SerialVisionServer.exe</executable>
+  <arguments>--data-dir "%ProgramData%\SerialVisionServer\data" --bootstrap-key-file "%ProgramData%\SerialVisionServer\private\bootstrap.key" --tls-cert "%ProgramData%\SerialVisionServer\private\server.crt" --tls-key "%ProgramData%\SerialVisionServer\private\server.key" --port 4557</arguments>
+  <workingdirectory>%BASE%</workingdirectory>
+  <serviceaccount>
+    <username>NT AUTHORITY\LocalService</username>
+  </serviceaccount>
+  <onfailure action="restart" delay="10 sec" />
+  <stoptimeout>30 sec</stoptimeout>
+  <logpath>%ProgramData%\SerialVisionServer\logs</logpath>
+  <log mode="roll" />
+</service>

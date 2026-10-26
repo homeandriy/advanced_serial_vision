@@ -35,6 +35,7 @@ from serial_vision.ui.buttons import button
 class Page(QWidget):
     help_requested = Signal(str)
     record_requested = Signal(str)
+    warehouse_requested = Signal(str)
 
     def __init__(
         self, service: SerialVisionService, locale: str, parent: QWidget | None = None
@@ -85,6 +86,7 @@ class Page(QWidget):
         copy_action = menu.addAction(self.translate("copy"))
         formatted = menu.addAction(self.translate("add_to_database"))
         raw = menu.addAction(self.translate("add_raw_to_database"))
+        warehouse = menu.addAction(self.translate("wh_register_receipt"))
         action = menu.exec(field.mapToGlobal(point))
         if action == copy_action:
             field.copy()
@@ -94,6 +96,8 @@ class Page(QWidget):
             )
         elif action == raw:
             self.record_requested.emit(selected_text)
+        elif action == warehouse:
+            self.warehouse_requested.emit(selected_text)
 
     def show_generated_code(self, value: str, code_type: str) -> None:
         try:
