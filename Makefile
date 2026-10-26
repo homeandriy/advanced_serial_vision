@@ -1,5 +1,6 @@
 .DEFAULT_GOAL := help
 UV ?= uv
+MYPY_FLAGS ?=
 
 .PHONY: help install run check test lint format typecheck verify lock updater-translations check-translations check-text install-hooks build-server
 
@@ -40,7 +41,7 @@ format:
 	$(UV) run --locked ruff format .
 
 typecheck:
-	$(UV) run --locked mypy
+	$(UV) run --locked mypy $(MYPY_FLAGS)
 
 lock:
 	$(UV) lock

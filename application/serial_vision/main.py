@@ -17,7 +17,7 @@ from serial_vision.ui.theme import apply_theme
 
 
 def instance_lock_name() -> str:
-    if os.name != "nt":
+    if sys.platform != "win32":
         return "serial-vision.lock"
     session_id = ctypes.c_ulong()
     if not ctypes.windll.kernel32.ProcessIdToSessionId(os.getpid(), ctypes.byref(session_id)):

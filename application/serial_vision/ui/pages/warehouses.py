@@ -126,6 +126,7 @@ class WarehousesPage(Page):
                 dialog.feedback.setText(message)
             if code == "wh_login_required":
                 self.clear_session()
+                self.status.setText(message)
             return
         self.status.setText(self.translate("wh_ready"))
         completed(worker.result)
@@ -311,10 +312,24 @@ class WarehousesPage(Page):
         self.stack.setCurrentIndex(0)
         for control in (self.old_password, self.new_password, self.confirm_password):
             control.clear()
-        self.session_changed.emit(False, self.initialized)
+        self.status_loaded(
+            {"initialized": self.initialized, "bootstrap_required": bool(self.client.server_url)}
+        )
 
     def sign_out(self) -> None:
-        self.call("logout", None, lambda _result: self.clear_session())
+        if self.worker is not None:
+            return
+        token = self.client.token
+        self.clear_session()
+
+        def revoke() -> dict[str, object]:
+            self.client.token = token
+            try:
+                return self.client.call("logout")
+            finally:
+                self.client.token = ""
+
+        self.run_job(revoke, lambda _result: None)
 
     def build_workspace(self) -> None:
         panel = QWidget()

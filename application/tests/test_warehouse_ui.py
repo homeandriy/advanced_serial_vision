@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 import time
 import unittest
@@ -12,8 +13,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 from serial_vision.application_service import SerialVisionService
 from serial_vision.database import Database
+from serial_vision.main import instance_lock_name
 from serial_vision.ui.main_window import MainWindow
 from serial_vision.ui.warehouse_forms import WarehouseForm
+from serial_vision.warehouse.security import WarehouseError
 
 
 class WarehouseUiTest(unittest.TestCase):
@@ -70,10 +73,18 @@ class WarehouseUiTest(unittest.TestCase):
         self.assertIs(self.window.recognition_page, self.window.tabs.currentWidget())
         self.assertFalse(self.page.activated)
 
+    def test_instance_lock_uses_windows_session_identity(self):
+        name = instance_lock_name()
+        self.assertTrue(name.endswith(".lock"))
+        if sys.platform == "win32":
+            self.assertTrue(name.startswith("serial-vision-session-"))
+        else:
+            self.assertEqual("serial-vision.lock", name)
+
     def test_first_open_explains_admin_setup_and_bootstrap_opens_workspace(self):
         self.window.tabs.setCurrentWidget(self.page)
         self.wait()
-        self.assertIn("адміністратора", self.page.status.text())
+        self.assertEqual(self.page.translate("wh_first_admin"), self.page.status.text())
         self.bootstrap()
         self.assertEqual("admin", self.page.user["role"])
         self.assertEqual(2, self.page.stack.currentIndex())
@@ -155,3 +166,17 @@ class WarehouseUiTest(unittest.TestCase):
         self.assertEqual("KEEP", form.fields["code"].text())
         self.assertTrue(form.feedback.text())
         form.reject()
+
+    def test_logout_clears_visible_data_even_when_server_is_unreachable(self):
+        self.bootstrap()
+        with patch.object(
+            self.page.client, "call", side_effect=WarehouseError("wh_connection", 503)
+        ):
+            self.page.sign_out()
+            self.assertEqual(0, self.page.stack.currentIndex())
+            self.wait()
+        self.assertEqual({}, self.page.user)
+        self.assertEqual("", self.page.client.token)
+        self.assertEqual(self.page.translate("wh_login"), self.page.login_button.text())
+        self.assertTrue(self.page.login_confirm.isHidden())
+        self.assertTrue(all(table.rowCount() == 0 for table in self.page.tables.values()))
