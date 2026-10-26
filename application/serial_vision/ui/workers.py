@@ -18,6 +18,51 @@ from serial_vision.updates import (
 )
 
 
+class CameraScanWorker(QThread):
+    completed = Signal(str)
+    failed = Signal(str)
+
+    def __init__(
+        self, image_path: Path, options: RecognitionOptions, unavailable: str, parent=None
+    ) -> None:
+        super().__init__(parent)
+        self.image_path, self.options, self.unavailable = image_path, options, unavailable
+
+    def run(self) -> None:
+        try:
+            if not self.isInterruptionRequested():
+                result = BarcodeRecognizer(self.unavailable, self.options).recognize(
+                    self.image_path
+                )
+                if not self.isInterruptionRequested():
+                    self.completed.emit(result)
+        except Exception as error:
+            self.failed.emit(str(error))
+        finally:
+            try:
+                self.image_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
+class StatisticsWorker(QThread):
+    completed = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, service: SerialVisionService, grouping: str, parent=None) -> None:
+        super().__init__(parent)
+        self.service, self.grouping = service, grouping
+
+    def run(self) -> None:
+        try:
+            if not self.isInterruptionRequested():
+                summary = self.service.statistics_summary(self.grouping)
+                if not self.isInterruptionRequested():
+                    self.completed.emit(summary)
+        except Exception as error:
+            self.failed.emit(str(error))
+
+
 class UpdateWorker(QThread):
     checked = Signal(object)
     failed = Signal(str)
@@ -87,7 +132,7 @@ class RecognitionWorker(QThread):
         self.barcode_fallback_label = barcode_fallback_label
         self.barcode_module_unavailable = barcode_module_unavailable
         self.options = options
-        self.locale = getattr(parent, "locale", None) or system_locale()
+        self.locale = getattr(parent, "ui_locale", None) or system_locale()
 
     def run(self) -> None:
         if self.isInterruptionRequested():

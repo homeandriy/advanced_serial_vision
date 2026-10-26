@@ -10,7 +10,7 @@ def system_locale() -> str:
     return candidate if candidate in SUPPORTED_LOCALES else "uk"
 
 
-def t(locale: str, key: str, **values: str) -> str:
+def t(locale: str, key: str, **values: object) -> str:
     return TEXT[locale].get(key, TEXT["uk"][key]).format(**values)
 
 
@@ -1226,6 +1226,10 @@ TEXT["pl"].update(
 TEXT["uk"].update(
     {
         "ocr_no_text": "OCR не знайшов текст на цьому зображенні.",
+        "statistics_group_invalid": "Оберіть групування за днем або місяцем.",
+        "settings_save_failed": "Не вдалося зберегти налаштування: {error}",
+        "settings_invalid": "Перевірте мову, тему та стиль іконок.",
+        "settings_api_restore_failed": "Налаштування не збережено, і попередній стан API не вдалося відновити. Перевірте доступність порту та повторіть збереження.",
         "api_bearer_required": "Потрібен Bearer-токен.",
         "api_key_invalid": "API-ключ недійсний або відкликаний.",
         "api_key_expired": "Строк дії API-ключа минув.",
@@ -1267,6 +1271,10 @@ TEXT["uk"].update(
 TEXT["en"].update(
     {
         "ocr_no_text": "OCR found no text in this image.",
+        "statistics_group_invalid": "Select daily or monthly grouping.",
+        "settings_save_failed": "Could not save settings: {error}",
+        "settings_invalid": "Check the language, theme and icon style.",
+        "settings_api_restore_failed": "Settings were not saved and the previous API configuration could not be restored. Check port availability and save again.",
         "api_bearer_required": "Bearer token required.",
         "api_key_invalid": "Invalid or revoked API key.",
         "api_key_expired": "API key has expired.",
@@ -1308,6 +1316,10 @@ TEXT["en"].update(
 TEXT["pl"].update(
     {
         "ocr_no_text": "OCR nie znalazł tekstu na tym zdjęciu.",
+        "statistics_group_invalid": "Wybierz grupowanie dzienne lub miesięczne.",
+        "settings_save_failed": "Nie udało się zapisać ustawień: {error}",
+        "settings_invalid": "Sprawdź język, motyw i styl ikon.",
+        "settings_api_restore_failed": "Ustawienia nie zostały zapisane i nie udało się przywrócić poprzedniej konfiguracji API. Sprawdź dostępność portu i zapisz ponownie.",
         "api_bearer_required": "Wymagany jest token Bearer.",
         "api_key_invalid": "Klucz API jest nieprawidłowy lub unieważniony.",
         "api_key_expired": "Klucz API wygasł.",
@@ -1343,5 +1355,30 @@ TEXT["pl"].update(
         "updater_no_digest": "Wydanie GitHub nie zawiera sumy SHA-256 instalatora; anulowano pobieranie.",
         "updater_digest_mismatch": "Suma SHA-256 instalatora nie zgadza się z wydaniem GitHub.",
         "updater_windows_only": "Ten aktualizator jest przeznaczony wyłącznie dla Windows.",
+    }
+)
+
+TEXT["uk"].update(
+    {
+        "gallery_loading": "Завантаження фото…",
+        "gallery_failed": "Не вдалося завантажити фото: {error}",
+        "statistics_loading": "Обчислення статистики…",
+        "statistics_failed": "Не вдалося обчислити статистику: {error}",
+    }
+)
+TEXT["en"].update(
+    {
+        "gallery_loading": "Loading photos…",
+        "gallery_failed": "Could not load photos: {error}",
+        "statistics_loading": "Calculating statistics…",
+        "statistics_failed": "Could not calculate statistics: {error}",
+    }
+)
+TEXT["pl"].update(
+    {
+        "gallery_loading": "Wczytywanie zdjęć…",
+        "gallery_failed": "Nie udało się wczytać zdjęć: {error}",
+        "statistics_loading": "Obliczanie statystyk…",
+        "statistics_failed": "Nie udało się obliczyć statystyk: {error}",
     }
 )

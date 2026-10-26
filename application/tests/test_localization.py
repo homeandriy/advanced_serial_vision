@@ -137,7 +137,7 @@ class LocalizationTest(unittest.TestCase):
     def test_ocr_uses_interface_language_independently_of_recognition_language(self) -> None:
         for language in ("uk", "en", "pl"):
             parent = QObject()
-            parent.locale = language
+            parent.ui_locale = language
             worker = RecognitionWorker(
                 Path("test.png"),
                 "eng",

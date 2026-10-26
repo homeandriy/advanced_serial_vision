@@ -6,12 +6,14 @@ import mimetypes
 import sqlite3
 import threading
 import time
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
 
 from serial_vision.application_service import SerialVisionService
+from serial_vision.contracts import ApiPathItem, ObjectSchema
 from serial_vision.i18n import error_message, t
 
 
@@ -23,7 +25,7 @@ class LocalApiServer:
         self.last_request: dict[str, float] = {}
         self.lock = threading.Lock()
 
-    def start(self) -> None:
+    def start(self, port: int | None = None) -> None:
         if self.server is not None:
             return
         owner = self
@@ -44,7 +46,9 @@ class LocalApiServer:
             def do_DELETE(self) -> None:
                 owner.handle(self)
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", self.service.api_port()), Handler)
+        self.server = ThreadingHTTPServer(
+            ("127.0.0.1", self.service.api_port() if port is None else port), Handler
+        )
         self.thread = threading.Thread(
             target=self.server.serve_forever, name="serial-vision-api", daemon=True
         )
@@ -59,9 +63,13 @@ class LocalApiServer:
         self.thread = None
 
     def restart(self) -> None:
+        self.configure(self.service.api_enabled(), self.service.api_port())
+
+    def configure(self, enabled: bool, port: int) -> None:
+        """Apply an explicit configuration without reading uncommitted settings."""
         self.stop()
-        if self.service.api_enabled():
-            self.start()
+        if enabled:
+            self.start(port)
 
     def handle(self, request: BaseHTTPRequestHandler) -> None:
         parsed = urlparse(request.path)
@@ -227,7 +235,7 @@ class LocalApiServer:
             return 200, {"record_id": record_id, "image_name": image_path.name, "available": True}
         if method == "POST" and len(parts) == 4 and parts[3] == "get":
             try:
-                record_id = int(data["record_id"])
+                record_id = self.record_identifier(data)
             except (KeyError, TypeError, ValueError) as error:
                 raise ApiError(422, "record_id must be an integer") from error
             image_path = self.available_image(record_id)
@@ -239,7 +247,7 @@ class LocalApiServer:
         if method != "POST" or len(parts) != 4 or parts[3] != "get":
             raise ApiError(405, "Method not allowed")
         try:
-            record_id = int(data["record_id"])
+            record_id = self.record_identifier(data)
         except (KeyError, TypeError, ValueError) as error:
             raise ApiError(422, "record_id must be an integer") from error
         content = self.service.device_recognized_text(record_id)
@@ -270,7 +278,7 @@ class LocalApiServer:
         return image_path
 
     @staticmethod
-    def model(row: object) -> dict[str, object]:
+    def model(row: sqlite3.Row) -> dict[str, object]:
         return {
             "id": row["id"],
             "name": row["name"],
@@ -280,7 +288,7 @@ class LocalApiServer:
         }
 
     @staticmethod
-    def device(row: object) -> dict[str, object]:
+    def device(row: sqlite3.Row) -> dict[str, object]:
         image_path = row["source_image_path"]
         return {
             "id": row["id"],
@@ -292,6 +300,13 @@ class LocalApiServer:
             "model_name": row["model_name"],
             "registered_at": row["registered_at"],
         }
+
+    @staticmethod
+    def record_identifier(data: dict[str, object]) -> int:
+        value = data["record_id"]
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
+            raise ValueError("record_id must be an integer")
+        return int(value)
 
     @staticmethod
     def body(request: BaseHTTPRequestHandler) -> dict[str, object]:
@@ -353,7 +368,7 @@ class LocalApiServer:
         request.wfile.write(data)
 
     def openapi(self) -> dict[str, object]:
-        model = {
+        model: ObjectSchema = {
             "type": "object",
             "required": ["name", "device_type", "service"],
             "properties": {
@@ -364,7 +379,7 @@ class LocalApiServer:
                 "usage_count": {"type": "integer", "example": 3},
             },
         }
-        equipment = {
+        equipment: ObjectSchema = {
             "type": "object",
             "required": [
                 "recognized_text",
@@ -394,14 +409,14 @@ class LocalApiServer:
                 },
             },
         }
-        equipment_write = {
+        equipment_write: ObjectSchema = {
             **equipment,
             "properties": {
                 **equipment["properties"],
                 "source_image_path": {"type": "string", "nullable": True, "writeOnly": True},
             },
         }
-        image_status = {
+        image_status: ObjectSchema = {
             "type": "object",
             "required": ["record_id", "image_name", "available"],
             "properties": {
@@ -414,7 +429,7 @@ class LocalApiServer:
                 "available": {"type": "boolean", "example": True},
             },
         }
-        image_get = {
+        image_get: ObjectSchema = {
             "type": "object",
             "required": ["record_id"],
             "properties": {
@@ -425,7 +440,7 @@ class LocalApiServer:
                 }
             },
         }
-        code_get = {
+        code_get: ObjectSchema = {
             "type": "object",
             "required": ["record_id", "type"],
             "properties": {
@@ -441,7 +456,7 @@ class LocalApiServer:
                 },
             },
         }
-        error = {
+        error: ObjectSchema = {
             "type": "object",
             "properties": {
                 "error": {
@@ -451,13 +466,13 @@ class LocalApiServer:
             },
         }
 
-        def response(description: str, schema: dict[str, object]) -> dict[str, object]:
+        def response(description: str, schema: Mapping[str, object]) -> dict[str, object]:
             return {
                 "description": description,
                 "content": {"application/json": {"schema": schema}},
             }
 
-        errors = {
+        errors: dict[str, object] = {
             "401": response("Missing, expired or revoked Bearer key", error),
             "404": response("Equipment record was not found", error),
             "409": response("Source image is unavailable", error),
@@ -465,7 +480,7 @@ class LocalApiServer:
             "429": response("The key rate limit was exceeded", error),
         }
 
-        def body(schema: dict[str, object]) -> dict[str, object]:
+        def body(schema: Mapping[str, object]) -> dict[str, object]:
             return {
                 "required": True,
                 "content": {"application/json": {"schema": schema}},
@@ -481,6 +496,176 @@ class LocalApiServer:
                 "schema": {"type": "integer"},
             }
         ]
+        paths: dict[str, ApiPathItem] = {
+            "/health": {
+                "get": {
+                    "tags": ["Application Routes"],
+                    "summary": "API health",
+                    "security": [],
+                    "responses": {
+                        "200": response(
+                            "API is running",
+                            {
+                                "type": "object",
+                                "properties": {"status": {"type": "string", "example": "ok"}},
+                            },
+                        )
+                    },
+                }
+            },
+            "/models": {
+                "get": {
+                    "tags": ["Application Routes"],
+                    "summary": "List models",
+                    "responses": {
+                        "200": response(
+                            "Model list",
+                            {"type": "array", "items": {"$ref": "#/components/schemas/Model"}},
+                        ),
+                        **errors,
+                    },
+                },
+                "post": {
+                    "tags": ["Application Routes"],
+                    "summary": "Create model",
+                    "requestBody": body(model),
+                    "responses": {
+                        "201": response("Model created", {"type": "object"}),
+                        **errors,
+                    },
+                },
+            },
+            "/models/{id}": {
+                "patch": {
+                    "tags": ["Application Routes"],
+                    "summary": "Update model",
+                    "parameters": identifier,
+                    "requestBody": body(model),
+                    "responses": {
+                        "200": response("Model updated", {"type": "object"}),
+                        **errors,
+                    },
+                },
+                "delete": {
+                    "tags": ["Application Routes"],
+                    "summary": "Delete model",
+                    "parameters": identifier,
+                    "responses": {"204": {"description": "Model deleted"}, **errors},
+                },
+            },
+            "/equipment": {
+                "get": {
+                    "tags": ["Application Routes"],
+                    "summary": "List equipment",
+                    "responses": {
+                        "200": response(
+                            "Equipment list",
+                            {
+                                "type": "array",
+                                "items": {"$ref": "#/components/schemas/Equipment"},
+                            },
+                        ),
+                        **errors,
+                    },
+                },
+                "post": {
+                    "tags": ["Application Routes"],
+                    "summary": "Create equipment",
+                    "requestBody": body(equipment_write),
+                    "responses": {
+                        "201": response("Equipment created", {"type": "object"}),
+                        **errors,
+                    },
+                },
+            },
+            "/equipment/{id}": {
+                "get": {
+                    "tags": ["Application Routes"],
+                    "summary": "Get equipment record",
+                    "parameters": identifier,
+                    "responses": {
+                        "200": response(
+                            "Equipment record", {"$ref": "#/components/schemas/Equipment"}
+                        ),
+                        **errors,
+                    },
+                },
+                "patch": {
+                    "tags": ["Application Routes"],
+                    "summary": "Update equipment",
+                    "parameters": identifier,
+                    "requestBody": body(equipment_write),
+                    "responses": {
+                        "200": response("Equipment updated", {"type": "object"}),
+                        **errors,
+                    },
+                },
+                "delete": {
+                    "tags": ["Application Routes"],
+                    "summary": "Delete equipment",
+                    "parameters": identifier,
+                    "responses": {"204": {"description": "Equipment deleted"}, **errors},
+                },
+            },
+            "/image/check/{record_id}": {
+                "get": {
+                    "tags": ["Application Routes"],
+                    "summary": "Check source image availability",
+                    "description": "record_id is the id of an equipment record, not a model. The response contains no local path.",
+                    "parameters": record_id,
+                    "responses": {
+                        "200": response("Source image is available", image_status),
+                        **errors,
+                    },
+                },
+            },
+            "/image/get": {
+                "post": {
+                    "tags": ["Application Routes"],
+                    "summary": "Download source image",
+                    "description": "Use an equipment record id. The response is a binary stream; read the original filename with extension from the Content-Disposition header.",
+                    "requestBody": body(image_get),
+                    "responses": {
+                        "200": {
+                            "description": "Image byte stream; filename is in the standard Content-Disposition header",
+                            "headers": {
+                                "Content-Disposition": {
+                                    "schema": {"type": "string"},
+                                    "description": "Original file name with extension (RFC-compatible attachment filename)",
+                                }
+                            },
+                            "content": {
+                                "image/*": {"schema": {"type": "string", "format": "binary"}}
+                            },
+                        },
+                        **errors,
+                    },
+                },
+            },
+            "/code/get": {
+                "post": {
+                    "tags": ["Application Routes"],
+                    "summary": "Generate QR or Code 128 barcode",
+                    "description": "record_id is the equipment record id, not device_model_id. Generates a PNG from recognized_text without changing the record. The filename is returned in Content-Disposition.",
+                    "requestBody": body(code_get),
+                    "responses": {
+                        "200": {
+                            "description": "Generated PNG byte stream. barcode uses Code 128.",
+                            "headers": {
+                                "Content-Disposition": {
+                                    "schema": {"type": "string"},
+                                    "description": "Generated filename: qrcode_<code>_<H_M_d_m_Y>.png or barcode_<code>_<H_M_d_m_Y>.png.",
+                                }
+                            },
+                            "content": {
+                                "image/png": {"schema": {"type": "string", "format": "binary"}}
+                            },
+                        },
+                        **errors,
+                    },
+                },
+            },
+        }
         return {
             "openapi": "3.0.3",
             "info": {
@@ -515,176 +700,7 @@ class LocalApiServer:
                     "Error": error,
                 },
             },
-            "paths": {
-                "/health": {
-                    "get": {
-                        "tags": ["Application Routes"],
-                        "summary": "API health",
-                        "security": [],
-                        "responses": {
-                            "200": response(
-                                "API is running",
-                                {
-                                    "type": "object",
-                                    "properties": {"status": {"type": "string", "example": "ok"}},
-                                },
-                            )
-                        },
-                    }
-                },
-                "/models": {
-                    "get": {
-                        "tags": ["Application Routes"],
-                        "summary": "List models",
-                        "responses": {
-                            "200": response(
-                                "Model list",
-                                {"type": "array", "items": {"$ref": "#/components/schemas/Model"}},
-                            ),
-                            **errors,
-                        },
-                    },
-                    "post": {
-                        "tags": ["Application Routes"],
-                        "summary": "Create model",
-                        "requestBody": body(model),
-                        "responses": {
-                            "201": response("Model created", {"type": "object"}),
-                            **errors,
-                        },
-                    },
-                },
-                "/models/{id}": {
-                    "patch": {
-                        "tags": ["Application Routes"],
-                        "summary": "Update model",
-                        "parameters": identifier,
-                        "requestBody": body(model),
-                        "responses": {
-                            "200": response("Model updated", {"type": "object"}),
-                            **errors,
-                        },
-                    },
-                    "delete": {
-                        "tags": ["Application Routes"],
-                        "summary": "Delete model",
-                        "parameters": identifier,
-                        "responses": {"204": {"description": "Model deleted"}, **errors},
-                    },
-                },
-                "/equipment": {
-                    "get": {
-                        "tags": ["Application Routes"],
-                        "summary": "List equipment",
-                        "responses": {
-                            "200": response(
-                                "Equipment list",
-                                {
-                                    "type": "array",
-                                    "items": {"$ref": "#/components/schemas/Equipment"},
-                                },
-                            ),
-                            **errors,
-                        },
-                    },
-                    "post": {
-                        "tags": ["Application Routes"],
-                        "summary": "Create equipment",
-                        "requestBody": body(equipment_write),
-                        "responses": {
-                            "201": response("Equipment created", {"type": "object"}),
-                            **errors,
-                        },
-                    },
-                },
-                "/equipment/{id}": {
-                    "get": {
-                        "tags": ["Application Routes"],
-                        "summary": "Get equipment record",
-                        "parameters": identifier,
-                        "responses": {
-                            "200": response(
-                                "Equipment record", {"$ref": "#/components/schemas/Equipment"}
-                            ),
-                            **errors,
-                        },
-                    },
-                    "patch": {
-                        "tags": ["Application Routes"],
-                        "summary": "Update equipment",
-                        "parameters": identifier,
-                        "requestBody": body(equipment_write),
-                        "responses": {
-                            "200": response("Equipment updated", {"type": "object"}),
-                            **errors,
-                        },
-                    },
-                    "delete": {
-                        "tags": ["Application Routes"],
-                        "summary": "Delete equipment",
-                        "parameters": identifier,
-                        "responses": {"204": {"description": "Equipment deleted"}, **errors},
-                    },
-                },
-                "/image/check/{record_id}": {
-                    "get": {
-                        "tags": ["Application Routes"],
-                        "summary": "Check source image availability",
-                        "description": "record_id is the id of an equipment record, not a model. The response contains no local path.",
-                        "parameters": record_id,
-                        "responses": {
-                            "200": response("Source image is available", image_status),
-                            **errors,
-                        },
-                    },
-                },
-                "/image/get": {
-                    "post": {
-                        "tags": ["Application Routes"],
-                        "summary": "Download source image",
-                        "description": "Use an equipment record id. The response is a binary stream; read the original filename with extension from the Content-Disposition header.",
-                        "requestBody": body(image_get),
-                        "responses": {
-                            "200": {
-                                "description": "Image byte stream; filename is in the standard Content-Disposition header",
-                                "headers": {
-                                    "Content-Disposition": {
-                                        "schema": {"type": "string"},
-                                        "description": "Original file name with extension (RFC-compatible attachment filename)",
-                                    }
-                                },
-                                "content": {
-                                    "image/*": {"schema": {"type": "string", "format": "binary"}}
-                                },
-                            },
-                            **errors,
-                        },
-                    },
-                },
-                "/code/get": {
-                    "post": {
-                        "tags": ["Application Routes"],
-                        "summary": "Generate QR or Code 128 barcode",
-                        "description": "record_id is the equipment record id, not device_model_id. Generates a PNG from recognized_text without changing the record. The filename is returned in Content-Disposition.",
-                        "requestBody": body(code_get),
-                        "responses": {
-                            "200": {
-                                "description": "Generated PNG byte stream. barcode uses Code 128.",
-                                "headers": {
-                                    "Content-Disposition": {
-                                        "schema": {"type": "string"},
-                                        "description": "Generated filename: qrcode_<code>_<H_M_d_m_Y>.png or barcode_<code>_<H_M_d_m_Y>.png.",
-                                    }
-                                },
-                                "content": {
-                                    "image/png": {"schema": {"type": "string", "format": "binary"}}
-                                },
-                            },
-                            **errors,
-                        },
-                    },
-                },
-            },
+            "paths": paths,
         }
 
     @staticmethod

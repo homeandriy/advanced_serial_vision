@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 import tempfile
 from pathlib import Path
-from typing import Any
 
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QCloseEvent, QMouseEvent, QPainter, QPen, QPixmap
@@ -32,6 +31,7 @@ from serial_vision.i18n import error_message, t
 from serial_vision.image_editing import ImageEditSession
 from serial_vision.ui.buttons import button
 from serial_vision.ui.photo_preview import PhotoPreview
+from serial_vision.ui.workers import AiRecognitionWorker, RecognitionWorker
 
 
 class CropPreview(PhotoPreview):
@@ -99,6 +99,8 @@ class CropPreview(PhotoPreview):
         )
 
     def _rotation_handle_position(self) -> QPoint:
+        if self._photo is None:
+            return QPoint()
         bounds = self._photo.sceneBoundingRect()
         top = self.mapFromScene(QPointF(bounds.center().x(), bounds.top()))
         return QPoint(top.x(), top.y() - 26)
@@ -108,6 +110,8 @@ class CropPreview(PhotoPreview):
         return (position.x() - handle.x()) ** 2 + (position.y() - handle.y()) ** 2 <= 12**2
 
     def _preview_rotation(self, point: QPointF) -> None:
+        if self._photo is None:
+            return
         center = self._photo.mapToScene(self._photo.boundingRect().center())
         degrees = round(
             math.degrees(math.atan2(point.y() - center.y(), point.x() - center.x())) + 90
@@ -196,6 +200,8 @@ class CropPreview(PhotoPreview):
         return None
 
     def _bounded(self, point: QPointF) -> QPointF:
+        if self._photo is None:
+            return point
         bounds = self._photo.boundingRect()
         return QPointF(
             max(bounds.left(), min(point.x(), bounds.right())),
@@ -203,6 +209,8 @@ class CropPreview(PhotoPreview):
         )
 
     def _dragged_rectangle(self, point: QPointF) -> QRectF:
+        if self._photo is None:
+            return QRectF()
         point = self._bounded(point)
         if self._drag_mode == "new":
             return QRectF(self._drag_start, point).normalized()
@@ -247,7 +255,7 @@ class CropPreview(PhotoPreview):
                 return
             point = self.mapToScene(event.position().toPoint())
             handle = self._handle_at(event.position().toPoint())
-            if handle or (self._selection is not None and self._selection.rect().contains(point)):
+            if self._selection is not None and (handle or self._selection.rect().contains(point)):
                 self._drag_mode = handle or "move"
                 self._drag_start = self._bounded(point)
                 self._drag_rect = QRectF(self._selection.rect())
@@ -321,24 +329,24 @@ class ImageEditorDialog(QDialog):
         source: Path,
         locale: str,
         language: str,
-        local_worker_type: type[Any],
-        ai_worker_type: type[Any],
+        local_worker_type: type[RecognitionWorker],
+        ai_worker_type: type[AiRecognitionWorker],
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.service = service
-        self.locale = locale
+        self.ui_locale = locale
         self.language = language
         self.local_worker_type = local_worker_type
         self.ai_worker_type = ai_worker_type
         self.session = ImageEditSession(source)
         self._temporary = tempfile.TemporaryDirectory(prefix="serial-vision-editor-")
         self._snapshot = Path(self._temporary.name) / "edited.png"
-        self._workers: set[Any] = set()
+        self._workers: set[RecognitionWorker | AiRecognitionWorker] = set()
         self._closing = False
         self._busy = False
         self._preview_size = (1, 1)
-        self.setWindowTitle(self.tr("image_editor_title"))
+        self.setWindowTitle(self.translate("image_editor_title"))
         self.resize(1320, 820)
         self.setMinimumSize(900, 620)
         layout = QVBoxLayout(self)
@@ -348,23 +356,23 @@ class ImageEditorDialog(QDialog):
         left = QWidget(body)
         left_layout = QVBoxLayout(left)
         controls = QHBoxLayout()
-        rotate = button(left, "rotate", self.tr("rotate"))
+        rotate = button(left, "rotate", self.translate("rotate"))
         rotate.clicked.connect(self.rotate_image)
-        reset = button(left, "reset", self.tr("editor_reset"))
+        reset = button(left, "reset", self.translate("editor_reset"))
         reset.clicked.connect(self.reset_image)
-        fit = button(left, "fit_image", self.tr("fit_image"))
+        fit = button(left, "fit_image", self.translate("fit_image"))
         fit.clicked.connect(self.fit_image)
-        actual = button(left, "actual_size", self.tr("actual_size"))
+        actual = button(left, "actual_size", self.translate("actual_size"))
         actual.clicked.connect(self.actual_size)
         for control in (rotate, reset, fit, actual):
             controls.addWidget(control)
-        controls.addWidget(QLabel(self.tr("editor_rotation_angle")))
+        controls.addWidget(QLabel(self.translate("editor_rotation_angle")))
         self.rotation_degrees = QSpinBox(left)
         self.rotation_degrees.setRange(-180, 180)
         self.rotation_degrees.setSuffix("°")
-        self.rotation_degrees.setAccessibleName(self.tr("editor_rotation_angle"))
+        self.rotation_degrees.setAccessibleName(self.translate("editor_rotation_angle"))
         controls.addWidget(self.rotation_degrees)
-        apply_rotation = button(left, "rotate", self.tr("editor_apply_rotation"))
+        apply_rotation = button(left, "rotate", self.translate("editor_apply_rotation"))
         apply_rotation.clicked.connect(
             lambda: self.rotate_by_degrees(self.rotation_degrees.value())
         )
@@ -372,70 +380,70 @@ class ImageEditorDialog(QDialog):
         controls.addStretch()
         left_layout.addLayout(controls)
 
-        crop_group = QGroupBox(self.tr("editor_crop"), left)
+        crop_group = QGroupBox(self.translate("editor_crop"), left)
         crop_layout = QGridLayout(crop_group)
         self.crop_values: dict[str, QSpinBox] = {}
         for index, key in enumerate(("editor_x", "editor_y", "editor_width", "editor_height")):
             field = QSpinBox(crop_group)
             field.setMinimum(0 if index < 2 else 2)
             field.setMaximum(12000)
-            field.setAccessibleName(self.tr(key))
+            field.setAccessibleName(self.translate(key))
             field.editingFinished.connect(self.show_numeric_crop)
-            crop_layout.addWidget(QLabel(self.tr(key)), 0, index)
+            crop_layout.addWidget(QLabel(self.translate(key)), 0, index)
             crop_layout.addWidget(field, 1, index)
             self.crop_values[key] = field
-        apply_crop = button(crop_group, "crop", self.tr("editor_apply_crop"))
+        apply_crop = button(crop_group, "crop", self.translate("editor_apply_crop"))
         apply_crop.clicked.connect(self.apply_crop)
         crop_layout.addWidget(apply_crop, 1, 4)
         left_layout.addWidget(crop_group)
 
         resize_row = QHBoxLayout()
-        resize_row.addWidget(QLabel(self.tr("editor_resize_percent")))
+        resize_row.addWidget(QLabel(self.translate("editor_resize_percent")))
         self.resize_percent = QSpinBox(left)
         self.resize_percent.setRange(25, 300)
         self.resize_percent.setValue(100)
         self.resize_percent.setSuffix(" %")
-        self.resize_percent.setAccessibleName(self.tr("editor_resize_percent"))
+        self.resize_percent.setAccessibleName(self.translate("editor_resize_percent"))
         resize_row.addWidget(self.resize_percent)
-        apply_resize = button(left, "resize", self.tr("editor_apply_resize"))
+        apply_resize = button(left, "resize", self.translate("editor_apply_resize"))
         apply_resize.clicked.connect(self.apply_resize)
         resize_row.addWidget(apply_resize)
         resize_row.addStretch()
         left_layout.addLayout(resize_row)
 
-        self.advanced_toggle = QCheckBox(self.tr("editor_advanced"), left)
+        self.advanced_group = QGroupBox(self.translate("editor_advanced"), left)
+        self.advanced_toggle = QCheckBox(self.translate("editor_advanced"), left)
         self.advanced_toggle.toggled.connect(
             lambda checked: self.advanced_group.setVisible(checked)
         )
         left_layout.addWidget(self.advanced_toggle)
-        self.advanced_group = QGroupBox(self.tr("editor_advanced"), left)
         advanced_form = QFormLayout(self.advanced_group)
         self.adjustments: dict[str, QSlider] = {}
         self.adjustment_values: dict[str, QLabel] = {}
         for name in ("brightness", "contrast", "color", "sharpness"):
-            field = QSlider(Qt.Orientation.Horizontal, self.advanced_group)
-            field.setObjectName("imageAdjustmentSlider")
-            field.setRange(0, 200)
-            field.setValue(100)
-            field.setTickInterval(50)
-            field.setTickPosition(QSlider.TickPosition.TicksBelow)
-            field.setAccessibleName(self.tr(f"editor_{name}"))
+            slider = QSlider(Qt.Orientation.Horizontal, self.advanced_group)
+            slider.setObjectName("imageAdjustmentSlider")
+            slider.setRange(0, 200)
+            slider.setValue(100)
+            slider.setTickInterval(50)
+            slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+            slider.setAccessibleName(self.translate(f"editor_{name}"))
             value = QLabel("100 %", self.advanced_group)
             value.setMinimumWidth(48)
-            field.valueChanged.connect(lambda current, label=value: label.setText(f"{current} %"))
-            field.valueChanged.connect(self.schedule_preview)
+            slider.valueChanged.connect(lambda current, label=value: label.setText(f"{current} %"))
+            slider.valueChanged.connect(self.schedule_preview)
             row = QHBoxLayout()
-            row.addWidget(field, 1)
+            row.addWidget(slider, 1)
             row.addWidget(value)
-            advanced_form.addRow(self.tr(f"editor_{name}"), row)
-            self.adjustments[name] = field
+            advanced_form.addRow(self.translate(f"editor_{name}"), row)
+            self.adjustments[name] = slider
             self.adjustment_values[name] = value
         self.advanced_group.setVisible(False)
         left_layout.addWidget(self.advanced_group)
 
-        self.preview = CropPreview(self.tr("select_image"), left)
-        self.preview.setAccessibleName(self.tr("editor_crop_preview"))
-        self.preview.setToolTip(self.tr("editor_crop_hint"))
+        self.preview = CropPreview(self.translate("select_image"), left)
+        self.preview.setAccessibleName(self.translate("editor_crop_preview"))
+        self.preview.setToolTip(self.translate("editor_crop_hint"))
         self.preview.selection_changed.connect(self.set_crop_from_selection)
         self.preview.rotation_previewed.connect(self.rotation_degrees.setValue)
         self.preview.rotation_requested.connect(self.rotate_by_degrees)
@@ -448,12 +456,12 @@ class ImageEditorDialog(QDialog):
         right_layout = QVBoxLayout(right)
         self.results: dict[str, QTextEdit] = {}
         for key in ("ocr", "barcodes", "ai"):
-            right_layout.addWidget(QLabel(self.tr(key)))
-            field = QTextEdit(right)
-            field.setObjectName("recognitionResult")
-            field.setReadOnly(key != "ocr")
-            field.setPlainText(
-                self.tr(
+            right_layout.addWidget(QLabel(self.translate(key)))
+            result_field = QTextEdit(right)
+            result_field.setObjectName("recognitionResult")
+            result_field.setReadOnly(key != "ocr")
+            result_field.setPlainText(
+                self.translate(
                     {
                         "ocr": "ocr_empty",
                         "barcodes": "barcode_empty",
@@ -461,25 +469,25 @@ class ImageEditorDialog(QDialog):
                     }[key]
                 )
             )
-            right_layout.addWidget(field, 1)
-            self.results[key] = field
+            right_layout.addWidget(result_field, 1)
+            self.results[key] = result_field
         body.addWidget(right)
         body.setSizes([850, 470])
 
         footer = QHBoxLayout()
-        self.status = QLabel(self.tr("editor_ready"), self)
+        self.status = QLabel(self.translate("editor_ready"), self)
         self.status.setWordWrap(True)
         footer.addWidget(self.status, 1)
-        footer.addWidget(QLabel(self.tr("editor_ai_profile")))
+        footer.addWidget(QLabel(self.translate("editor_ai_profile")))
         self.ai_profile = QComboBox(self)
-        self.ai_profile.addItem(self.tr("editor_no_ai"), "")
+        self.ai_profile.addItem(self.translate("editor_no_ai"), "")
         for profile in service.ai_agents():
             self.ai_profile.addItem(profile["name"], profile["id"])
         footer.addWidget(self.ai_profile)
-        self.recognize_button = button(self, "recognize", self.tr("editor_recognize"))
+        self.recognize_button = button(self, "recognize", self.translate("editor_recognize"))
         self.recognize_button.clicked.connect(self.recognize)
         footer.addWidget(self.recognize_button)
-        close = button(self, "close", self.tr("close"))
+        close = button(self, "close", self.translate("close"))
         close.clicked.connect(self.close)
         footer.addWidget(close)
         layout.addLayout(footer)
@@ -502,8 +510,8 @@ class ImageEditorDialog(QDialog):
         self._preview_timer.timeout.connect(self.refresh_preview)
         self.refresh_preview(False)
 
-    def tr(self, key: str, **values: str) -> str:
-        return t(self.locale, key, **values)
+    def translate(self, key: str, **values: object) -> str:
+        return t(self.ui_locale, key, **values)
 
     def _reset_crop_fields(self) -> None:
         width, height = self.session.size
@@ -525,10 +533,10 @@ class ImageEditorDialog(QDialog):
         )
         image_data, self._preview_size = self.session.preview_png()
         if not self.preview.set_preview(image_data):
-            self.status.setText(self.tr("editor_preview_failed"))
+            self.status.setText(self.translate("editor_preview_failed"))
             return
         width, height = self.session.size
-        self.dimensions.setText(self.tr("editor_dimensions", width=width, height=height))
+        self.dimensions.setText(self.translate("editor_dimensions", width=width, height=height))
         self._reset_crop_fields()
         if not preserve_crop:
             self.rotation_degrees.setValue(0)
@@ -565,7 +573,7 @@ class ImageEditorDialog(QDialog):
         width, height = self.session.size
         x, y, crop_width, crop_height = values
         if crop_width < 2 or crop_height < 2 or x + crop_width > width or y + crop_height > height:
-            self.status.setText(self.tr("editor_crop_invalid"))
+            self.status.setText(self.translate("editor_crop_invalid"))
             return
         preview_width, preview_height = self._preview_size
         self.preview.set_selection(
@@ -576,19 +584,21 @@ class ImageEditorDialog(QDialog):
                 crop_height * preview_height / height,
             )
         )
-        self.status.setText(self.tr("editor_ready"))
+        self.status.setText(self.translate("editor_ready"))
 
     def _crop_values(self) -> tuple[int, int, int, int]:
-        return tuple(
-            self.crop_values[key].value()
-            for key in ("editor_x", "editor_y", "editor_width", "editor_height")
+        return (
+            self.crop_values["editor_x"].value(),
+            self.crop_values["editor_y"].value(),
+            self.crop_values["editor_width"].value(),
+            self.crop_values["editor_height"].value(),
         )
 
     def apply_crop(self) -> None:
         try:
             self.session.crop(*self._crop_values())
         except ValueError as error:
-            self.status.setText(error_message(self.locale, error))
+            self.status.setText(error_message(self.ui_locale, error))
             return
         self.refresh_preview(False)
 
@@ -596,7 +606,7 @@ class ImageEditorDialog(QDialog):
         try:
             self.session.resize(self.resize_percent.value())
         except ValueError as error:
-            self.status.setText(error_message(self.locale, error))
+            self.status.setText(error_message(self.ui_locale, error))
             return
         self.resize_percent.setValue(100)
         self.refresh_preview(False)
@@ -608,7 +618,7 @@ class ImageEditorDialog(QDialog):
         try:
             self.session.rotate_degrees(degrees)
         except ValueError as error:
-            self.status.setText(error_message(self.locale, error))
+            self.status.setText(error_message(self.ui_locale, error))
             self.refresh_preview()
             return
         self.refresh_preview(False)
@@ -645,23 +655,25 @@ class ImageEditorDialog(QDialog):
             self.session.save_snapshot(self._snapshot)
         except (OSError, ValueError) as error:
             QMessageBox.warning(
-                self, self.tr("error"), self.tr("editor_snapshot_failed", error=str(error))
+                self,
+                self.translate("error"),
+                self.translate("editor_snapshot_failed", error=str(error)),
             )
             return
         self._set_busy(True)
-        self.results["ocr"].setPlainText(self.tr("recognizing"))
-        self.results["barcodes"].setPlainText(self.tr("recognizing"))
+        self.results["ocr"].setPlainText(self.translate("recognizing"))
+        self.results["barcodes"].setPlainText(self.translate("recognizing"))
         self.results["ai"].setPlainText(
-            self.tr("editor_ai_waiting")
+            self.translate("editor_ai_waiting")
             if self.ai_profile.currentData()
-            else self.tr("editor_ai_not_selected")
+            else self.translate("editor_ai_not_selected")
         )
         self.status.setText(self._stage_label("ocr"))
         worker = self.local_worker_type(
             self._snapshot,
             self.language,
-            self.tr("barcode_ocr_fallback"),
-            self.tr("barcode_module_unavailable"),
+            self.translate("barcode_ocr_fallback"),
+            self.translate("barcode_module_unavailable"),
             self.service.recognition_options(),
             self,
         )
@@ -678,20 +690,24 @@ class ImageEditorDialog(QDialog):
 
     def _stage_label(self, stage: str) -> str:
         if self.ai_profile.currentData():
-            return self.tr("editor_stage_ocr_ai" if stage == "ocr" else "editor_stage_barcode_ai")
-        return self.tr("recognition_step_ocr" if stage == "ocr" else "recognition_step_barcode")
+            return self.translate(
+                "editor_stage_ocr_ai" if stage == "ocr" else "editor_stage_barcode_ai"
+            )
+        return self.translate(
+            "recognition_step_ocr" if stage == "ocr" else "recognition_step_barcode"
+        )
 
     def local_finished(self, _path: str, ocr_text: str, barcode_text: str, _error: str) -> None:
         if self._closing:
             return
-        self.results["ocr"].setPlainText(ocr_text or self.tr("ocr_empty"))
-        self.results["barcodes"].setPlainText(barcode_text or self.tr("barcodes_not_found"))
+        self.results["ocr"].setPlainText(ocr_text or self.translate("ocr_empty"))
+        self.results["barcodes"].setPlainText(barcode_text or self.translate("barcodes_not_found"))
         profile_id = str(self.ai_profile.currentData() or "")
         if not profile_id:
-            self.status.setText(self.tr("recognition_finished"))
+            self.status.setText(self.translate("recognition_finished"))
             return
-        self.status.setText(self.tr("editor_ai_stage"))
-        self.results["ai"].setPlainText(self.tr("ai_recognizing"))
+        self.status.setText(self.translate("editor_ai_stage"))
+        self.results["ai"].setPlainText(self.translate("ai_recognizing"))
         worker = self.ai_worker_type(self.service, profile_id, self._snapshot, self)
         self._workers.add(worker)
         worker.completed.connect(self.ai_finished)
@@ -701,19 +717,19 @@ class ImageEditorDialog(QDialog):
 
     def local_cancelled(self, _path: str) -> None:
         if not self._closing:
-            self.status.setText(self.tr("recognition_cancelled"))
+            self.status.setText(self.translate("recognition_cancelled"))
 
     def ai_finished(self, result: str) -> None:
         if not self._closing:
             self.results["ai"].setPlainText(result)
-            self.status.setText(self.tr("recognition_finished"))
+            self.status.setText(self.translate("recognition_finished"))
 
     def ai_failed(self, error: str) -> None:
         if not self._closing:
-            self.results["ai"].setPlainText(error_message(self.locale, error))
-            self.status.setText(self.tr("editor_ai_failed"))
+            self.results["ai"].setPlainText(error_message(self.ui_locale, error))
+            self.status.setText(self.translate("editor_ai_failed"))
 
-    def _worker_finished(self, worker: Any) -> None:
+    def _worker_finished(self, worker: RecognitionWorker | AiRecognitionWorker) -> None:
         self._workers.discard(worker)
         worker.deleteLater()
         if self._closing and not self._workers:

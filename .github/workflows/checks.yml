@@ -53,7 +53,9 @@ jobs:
         run: uv run --locked ruff check .
       - name: Ruff formatting
         run: uv run --locked ruff format --check .
-      - name: Core type checks
+      - name: Application type checks
         run: uv run --locked mypy
+      - name: Standalone updater translations
+        run: uv run --locked python scripts/generate_updater_translations.py --check
       - name: Tests
         run: uv run --locked python -m unittest discover -s application/tests -v

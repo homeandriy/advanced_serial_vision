@@ -9,7 +9,9 @@ Automatic, Ukrainian, English and Polish choices. The selection is kept for the
 current session; changing it also translates the current status and existing log.
 Downloads and installer launch still require pressing the installation button.
 Its embedded `UPDATER_TEXT` mirrors the `updater_*` entries in
-`serial_vision.i18n.TEXT`; update both catalogs together. Tests check they match.
+`serial_vision.i18n.TEXT`. Edit only the central catalog and run
+`make updater-translations`; `make check-translations` and CI reject stale output.
+The generated updater remains independent of the application at runtime.
 
 The planned `migrate_legacy.py` tool will import a user-selected Laravel SQLite
 database only after its schema is confirmed. It intentionally does not run as part

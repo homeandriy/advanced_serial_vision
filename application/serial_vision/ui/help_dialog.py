@@ -25,7 +25,7 @@ class HelpDialog(QDialog):
 
     def __init__(self, locale: str, section_id: str | None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.locale = locale
+        self.ui_locale = locale
         self.setWindowTitle("Serial Vision — " + t(locale, "help"))
         self.resize(1080, 760)
         self.sections = self._sections(locale)

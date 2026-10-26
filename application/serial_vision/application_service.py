@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import sqlite3
-from collections import defaultdict
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -12,10 +12,12 @@ import keyring
 
 from serial_vision.ai_vision import AiVisionRecognizer
 from serial_vision.code_images import generate_code_png, generated_code_filename
+from serial_vision.contracts import ImportSummary, StatisticsSummary
 from serial_vision.database import Database
-from serial_vision.i18n import system_locale
+from serial_vision.i18n import SUPPORTED_LOCALES, system_locale
 from serial_vision.model_import import read_models_xlsx
 from serial_vision.recognition_strategies import RecognitionOptions
+from serial_vision.settings import SettingsRecoveryError, SettingsSaveError, SettingsValues
 
 
 class SerialVisionService:
@@ -32,6 +34,66 @@ class SerialVisionService:
         if not image_directory.is_dir():
             raise ValueError("image_directory")
         self._database.set_setting("image_directory", str(image_directory.resolve()))
+
+    def save_all_settings(
+        self,
+        settings: SettingsValues,
+        reconfigure_api: Callable[[bool, int], None] | None = None,
+    ) -> None:
+        """Validate and persist one settings snapshot, compensating runtime failures."""
+        try:
+            port = int(settings.api_port)
+        except ValueError as error:
+            raise ValueError("api_port_invalid") from error
+        if not 1024 <= port <= 65535:
+            raise ValueError("api_port_invalid")
+        if (
+            settings.locale not in SUPPORTED_LOCALES
+            or settings.theme not in ("system", "light", "dark")
+            or settings.icon_style not in ("system", "modern", "classic", "windows98", "ubuntu22")
+        ):
+            raise ValueError("settings_invalid")
+        directory = settings.image_directory
+        previous_directory = self._database.setting("image_directory")
+        if not directory:
+            # A missing/unset picker must not discard a stored source-folder reference.
+            directory = previous_directory
+        elif directory != previous_directory:
+            if not Path(directory).is_dir():
+                raise ValueError("folder_missing")
+            directory = str(Path(directory).resolve())
+        previous_api = (self.api_enabled(), self.api_port())
+        current_api = (settings.api_enabled, port)
+        values = {
+            "image_directory": directory,
+            "theme": settings.theme,
+            "icon_style": settings.icon_style,
+            "recognition_rotate": "yes" if settings.rotate else "no",
+            "recognition_enhance": "yes" if settings.enhance else "no",
+            "api_enabled": "yes" if settings.api_enabled else "no",
+            "api_port": str(port),
+        }
+        if settings.locale != self.locale():
+            values["locale"] = settings.locale
+        runtime_attempted = False
+
+        def apply_runtime() -> None:
+            nonlocal runtime_attempted
+            if reconfigure_api is not None and current_api != previous_api:
+                runtime_attempted = True
+                reconfigure_api(*current_api)
+
+        try:
+            self._database.set_settings(values, apply_runtime)
+        except Exception as error:
+            if runtime_attempted and reconfigure_api is not None:
+                try:
+                    reconfigure_api(*previous_api)
+                except Exception as recovery:
+                    raise SettingsRecoveryError(error, recovery) from error
+            if isinstance(error, (OSError, ValueError)):
+                raise
+            raise SettingsSaveError(str(error)) from error
 
     def update_repository(self) -> str:
         return "homeandriy/advanced_serial_vision"
@@ -202,30 +264,37 @@ class SerialVisionService:
     def popular_models(self) -> list[sqlite3.Row]:
         return self._database.popular_models()
 
-    def add_model(self, name: str, device_type: str, service: str) -> None:
-        self._validate_model(name, device_type, service)
+    def add_model(self, name: object, device_type: object, service: object) -> None:
+        validated_name, validated_type, validated_service = self._validate_model(
+            name, device_type, service
+        )
         try:
-            self._database.save_model(None, name.strip(), device_type, service)
+            self._database.save_model(None, validated_name, validated_type, validated_service)
         except sqlite3.IntegrityError as error:
             raise ValueError("model_exists") from error
 
-    def update_model(self, model_id: int, name: str, device_type: str, service: str) -> None:
-        self._validate_model(name, device_type, service)
+    def update_model(
+        self, model_id: int, name: object, device_type: object, service: object
+    ) -> None:
+        validated_name, validated_type, validated_service = self._validate_model(
+            name, device_type, service
+        )
         try:
-            self._database.save_model(model_id, name.strip(), device_type, service)
+            self._database.save_model(model_id, validated_name, validated_type, validated_service)
         except sqlite3.IntegrityError as error:
             raise ValueError("model_exists") from error
 
     @staticmethod
-    def _validate_model(name: str, device_type: str, service: str) -> None:
+    def _validate_model(name: object, device_type: object, service: object) -> tuple[str, str, str]:
         if not isinstance(name, str) or not name.strip():
             raise ValueError("model_name_required")
-        if device_type not in ("modem", "tuner"):
+        if not isinstance(device_type, str) or device_type not in ("modem", "tuner"):
             raise ValueError("model_type_invalid")
-        if service not in ("internet", "television"):
+        if not isinstance(service, str) or service not in ("internet", "television"):
             raise ValueError("model_service_invalid")
+        return name.strip(), device_type, service
 
-    def import_models_xlsx(self, path: Path) -> dict[str, object]:
+    def import_models_xlsx(self, path: Path) -> ImportSummary:
         imported = read_models_xlsx(path)
         existing = {
             (str(row["name"]).casefold(), str(row["device_type"]), str(row["service"]))
@@ -347,24 +416,8 @@ class SerialVisionService:
     def export_devices(self, destination: Path, rows: list[sqlite3.Row]) -> None:
         self._database.export_csv(destination, rows)
 
-    def statistics_summary(self, group_by: str = "month") -> dict[str, object]:
-        operations: dict[str, dict[str, int]] = defaultdict(lambda: {"receipt": 0, "issue": 0})
-        services: dict[str, int] = defaultdict(int)
-        models: dict[str, int] = defaultdict(int)
-        for row in self._database.statistics_rows():
-            value = datetime.fromisoformat(row["registered_at"])
-            if value.tzinfo is None:
-                value = value.replace(tzinfo=UTC)
-            local = value.astimezone(ZoneInfo("Europe/Kyiv"))
-            period = local.strftime("%Y-%m-%d" if group_by == "day" else "%Y-%m")
-            operations[period][row["operation_type"]] += 1
-            services[row["service"]] += 1
-            models[row["model_name"]] += 1
-        return {
-            "operations": dict(sorted(operations.items())),
-            "services": dict(sorted(services.items())),
-            "models": dict(sorted(models.items(), key=lambda item: (-item[1], item[0]))),
-        }
+    def statistics_summary(self, group_by: str = "month") -> StatisticsSummary:
+        return self._database.statistics_summary(group_by)
 
     def statistics(self) -> list[sqlite3.Row]:
         return self._database.statistics()

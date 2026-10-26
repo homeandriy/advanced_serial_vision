@@ -30,7 +30,8 @@ from tkinter.scrolledtext import ScrolledText
 REPOSITORY = "homeandriy/advanced_serial_vision"
 USER_AGENT = "Advanced-Serial-Vision-Path-Updater"
 
-# Embedded mirror of the updater_* keys in serial_vision.i18n.TEXT.
+# Generated from updater_* keys in serial_vision.i18n.TEXT.
+# Regenerate with make updater-translations; edit the central catalog only.
 # Kept in this script so it can recover an installation without app dependencies.
 # test_localization.py checks that this catalog matches the application catalog.
 UPDATER_TEXT = {
@@ -49,14 +50,16 @@ UPDATER_TEXT = {
         "updater_source": "Джерело: {url}",
         "updater_verified": "Файл перевірено. Відкривається інсталятор…",
         "updater_verified_path": "SHA-256 перевірено: {path}",
-        "updater_done": "Інсталятор запущено. Підтвердіть оновлення у його вікні; він закриє старий Serial Vision за потреби.",
+        "updater_done": "Інсталятор запущено. Підтвердіть оновлення у його вікні; він закриє "
+        "старий Serial Vision за потреби.",
         "updater_error_status": "Оновлення не виконано.",
         "updater_error_log": "Помилка: {error}",
         "updater_error_dialog": "Не вдалося підготувати оновлення:\n{error}",
         "updater_downloaded": "Завантажено {done} з {total} MiB ({percent}%).",
         "updater_download_unknown": "Завантажено {done} MiB…",
         "updater_no_installer": "У поточному релізі не знайдено Windows EXE-інсталятора.",
-        "updater_no_digest": "GitHub Release не містить SHA-256 для інсталятора; завантаження скасовано.",
+        "updater_no_digest": "GitHub Release не містить SHA-256 для інсталятора; завантаження "
+        "скасовано.",
         "updater_digest_mismatch": "SHA-256 інсталятора не збігається з даними GitHub Release.",
         "updater_windows_only": "Цей оновлювач призначений лише для Windows.",
     },
@@ -75,14 +78,16 @@ UPDATER_TEXT = {
         "updater_source": "Source: {url}",
         "updater_verified": "File verified. Opening the installer…",
         "updater_verified_path": "SHA-256 verified: {path}",
-        "updater_done": "Installer started. Confirm the update in its window; it will close the old Serial Vision if needed.",
+        "updater_done": "Installer started. Confirm the update in its window; it will close the "
+        "old Serial Vision if needed.",
         "updater_error_status": "Update was not completed.",
         "updater_error_log": "Error: {error}",
         "updater_error_dialog": "Could not prepare the update:\n{error}",
         "updater_downloaded": "Downloaded {done} of {total} MiB ({percent}%).",
         "updater_download_unknown": "Downloaded {done} MiB…",
         "updater_no_installer": "No Windows EXE installer was found in the latest release.",
-        "updater_no_digest": "The GitHub release has no installer SHA-256 digest; download cancelled.",
+        "updater_no_digest": "The GitHub release has no installer SHA-256 digest; download "
+        "cancelled.",
         "updater_digest_mismatch": "The installer SHA-256 does not match the GitHub release.",
         "updater_windows_only": "This updater is for Windows only.",
     },
@@ -101,14 +106,16 @@ UPDATER_TEXT = {
         "updater_source": "Źródło: {url}",
         "updater_verified": "Plik zweryfikowano. Otwieranie instalatora…",
         "updater_verified_path": "Zweryfikowano SHA-256: {path}",
-        "updater_done": "Uruchomiono instalator. Potwierdź aktualizację w jego oknie; w razie potrzeby zamknie on starszy Serial Vision.",
+        "updater_done": "Uruchomiono instalator. Potwierdź aktualizację w jego oknie; w razie "
+        "potrzeby zamknie on starszy Serial Vision.",
         "updater_error_status": "Nie przeprowadzono aktualizacji.",
         "updater_error_log": "Błąd: {error}",
         "updater_error_dialog": "Nie udało się przygotować aktualizacji:\n{error}",
         "updater_downloaded": "Pobrano {done} z {total} MiB ({percent}%).",
         "updater_download_unknown": "Pobrano {done} MiB…",
         "updater_no_installer": "W najnowszym wydaniu nie znaleziono instalatora EXE dla Windows.",
-        "updater_no_digest": "Wydanie GitHub nie zawiera sumy SHA-256 instalatora; anulowano pobieranie.",
+        "updater_no_digest": "Wydanie GitHub nie zawiera sumy SHA-256 instalatora; anulowano "
+        "pobieranie.",
         "updater_digest_mismatch": "Suma SHA-256 instalatora nie zgadza się z wydaniem GitHub.",
         "updater_windows_only": "Ten aktualizator jest przeznaczony wyłącznie dla Windows.",
     },

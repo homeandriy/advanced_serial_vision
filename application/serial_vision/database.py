@@ -3,11 +3,13 @@ from __future__ import annotations
 import csv
 import sqlite3
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+from serial_vision.contracts import StatisticsSummary
 
 
 class Database:
@@ -59,11 +61,18 @@ class Database:
             return db.execute("SELECT 1 FROM settings WHERE key = ?", (key,)).fetchone() is not None
 
     def set_setting(self, key: str, value: str) -> None:
+        self.set_settings({key: value})
+
+    def set_settings(
+        self, values: Mapping[str, str], before_commit: Callable[[], None] | None = None
+    ) -> None:
         with self.connection() as db:
-            db.execute(
+            db.executemany(
                 "INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                (key, value),
+                values.items(),
             )
+            if before_commit is not None:
+                before_commit()
 
     def register_launch(self) -> int:
         now = datetime.now(UTC).isoformat()
@@ -103,7 +112,8 @@ class Database:
             db.execute("DELETE FROM ai_agents WHERE id = ?", (agent_id,))
 
     def models(self, device_type: str = "", service: str = "") -> list[sqlite3.Row]:
-        conditions, params = [], []
+        conditions: list[str] = []
+        params: list[str | int] = []
         if device_type:
             conditions.append("device_type = ?")
             params.append(device_type)
@@ -176,7 +186,8 @@ class Database:
         page: int = 1,
         per_page: int = 100,
     ) -> tuple[list[sqlite3.Row], dict[str, int] | None]:
-        conditions, params = [], []
+        conditions: list[str] = []
+        params: list[str | int] = []
         if search:
             conditions.append("(d.recognized_text LIKE ? OR d.contract_number LIKE ?)")
             params.extend([f"%{search}%", f"%{search}%"])
@@ -247,7 +258,7 @@ class Database:
             str(data["contract_number"]).strip() or None,
             str(data["operation_type"]),
             str(data["source_image_path"]) or None,
-            int(data["device_model_id"]),
+            int(str(data["device_model_id"])),
             str(data["registered_at"]),
         )
         with self.connection() as db:
@@ -304,6 +315,41 @@ class Database:
             return db.execute(
                 "SELECT d.registered_at, d.operation_type, m.service, m.name AS model_name FROM devices d JOIN device_models m ON m.id = d.device_model_id"
             ).fetchall()
+
+    def statistics_summary(self, group_by: str = "month") -> StatisticsSummary:
+        """Aggregate inside SQLite; only grouped rows cross the persistence boundary."""
+        if group_by not in ("day", "month"):
+            raise ValueError("statistics_group_invalid")
+        zone = ZoneInfo("Europe/Kyiv")
+
+        def local_period(value: str) -> str:
+            timestamp = datetime.fromisoformat(value)
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=UTC)
+            return timestamp.astimezone(zone).strftime("%Y-%m-%d" if group_by == "day" else "%Y-%m")
+
+        with self.connection() as db:
+            db.create_function("kyiv_period", 1, local_period, deterministic=True)
+            db.execute("BEGIN")
+            operation_rows = db.execute(
+                "SELECT kyiv_period(registered_at) AS period, operation_type, COUNT(*) AS total FROM devices GROUP BY period, operation_type ORDER BY period"
+            ).fetchall()
+            services = db.execute(
+                "SELECT m.service, COUNT(*) AS total FROM devices d JOIN device_models m ON m.id = d.device_model_id GROUP BY m.service ORDER BY m.service"
+            ).fetchall()
+            models = db.execute(
+                "SELECT m.name, COUNT(*) AS total FROM devices d JOIN device_models m ON m.id = d.device_model_id GROUP BY m.name ORDER BY total DESC, m.name"
+            ).fetchall()
+        operations: dict[str, dict[str, int]] = {}
+        for row in operation_rows:
+            operations.setdefault(row["period"], {"receipt": 0, "issue": 0})[
+                row["operation_type"]
+            ] = int(row["total"])
+        return {
+            "operations": operations,
+            "services": {row["service"]: int(row["total"]) for row in services},
+            "models": {row["name"]: int(row["total"]) for row in models},
+        }
 
     def statistics(self) -> list[sqlite3.Row]:
         with self.connection() as db:

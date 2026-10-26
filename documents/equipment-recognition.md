@@ -70,6 +70,22 @@ model in v0.1.0; the Windows user who launches it is the operator.
 
 ## Validation and guards
 
+- Photo indexing and thumbnail decoding run in a cooperatively cancellable background
+  worker. Pagination reuses the catalog snapshot; Refresh rescans it. Thumbnail PNGs
+  use a bounded LRU cache keyed by path, modification time and size. Only the newest
+  requested page can update the screen. Refresh retains a still-visible selection;
+  page changes clear it immediately. Corrupt thumbnails leave a selectable card.
+  Statistics aggregation and camera-frame decoding also run outside the UI thread;
+  outdated statistics replies are ignored, and temporary camera frames are removed
+  by the worker even when decoding fails.
+
+- Settings are validated by the application service and saved in one SQLite
+  transaction. API reconfiguration participates in the operation: if applying the
+  new configuration or committing the transaction fails, persisted settings are
+  rolled back and the previous API configuration is restored. A restoration error
+  is reported explicitly; the form remains dirty after any failed save. Theme,
+  folder and language UI updates happen only after the operation succeeds.
+
 - Closing the main window or choosing Exit stops the camera, update timers and local
   API, requests cooperative worker cancellation, and keeps the Qt event loop alive
   until running workers finish. It then exits and releases the single-instance lock.
@@ -137,6 +153,10 @@ Advanced Serial Vision uses its own per-user application-data directory under th
 Packaged builds carry `VERSION` inside the bundle and never rely on their current working directory to show the installed version or check updates.
 
 ## Scalability and statistics
+
+Statistics are aggregated by SQLite in a single consistent read transaction.
+The local Europe/Kyiv date is computed before grouping so UTC midnight and DST
+transitions retain their existing semantics; only grouped counts are fetched.
 
 The photo catalog is paged at 48 files. Equipment becomes paged at 100 rows only after 5,000 filtered rows, while export remains complete. Statistics aggregate receipt and issue operations, services and models in Europe/Kyiv and offer daily and monthly views.
 

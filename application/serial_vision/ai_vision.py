@@ -64,7 +64,9 @@ class AiVisionRecognizer:
                 {"x-api-key": token, "anthropic-version": "2023-06-01"},
             )
             return self._require_text(
-                "\n".join(str(item.get("text", "")) for item in response.get("content", [])).strip()
+                "\n".join(
+                    str(item.get("text", "")) for item in self._objects(response.get("content"))
+                ).strip()
             )
         if provider == "gemini":
             payload = {
@@ -82,13 +84,11 @@ class AiVisionRecognizer:
                 payload,
                 {"x-goog-api-key": token},
             )
+            candidates = self._objects(response.get("candidates"))
+            content = candidates[0].get("content") if candidates else None
+            parts = self._objects(content.get("parts")) if isinstance(content, dict) else []
             return self._require_text(
-                "\n".join(
-                    str(item.get("text", ""))
-                    for item in response.get("candidates", [{}])[0]
-                    .get("content", {})
-                    .get("parts", [])
-                ).strip()
+                "\n".join(str(item.get("text", "")) for item in parts).strip()
             )
         raise RuntimeError("Unsupported AI provider.")
 
@@ -109,15 +109,19 @@ class AiVisionRecognizer:
         return text
 
     @staticmethod
+    def _objects(value: object) -> list[dict[str, object]]:
+        if not isinstance(value, list):
+            return []
+        return [item for item in value if isinstance(item, dict)]
+
+    @staticmethod
     def _openai_text(response: dict[str, object]) -> str:
         direct = str(response.get("output_text", "")).strip()
         if direct:
             return direct
         fragments: list[str] = []
-        for output in response.get("output", []):
-            if not isinstance(output, dict):
-                continue
-            for content in output.get("content", []):
+        for output in AiVisionRecognizer._objects(response.get("output")):
+            for content in AiVisionRecognizer._objects(output.get("content")):
                 if isinstance(content, dict) and content.get("type") in {"output_text", "text"}:
                     fragments.append(str(content.get("text", "")))
         return "\n".join(fragment for fragment in fragments if fragment).strip()

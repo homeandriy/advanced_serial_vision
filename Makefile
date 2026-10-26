@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 UV ?= uv
 
-.PHONY: help install run check test lint format typecheck verify lock
+.PHONY: help install run check test lint format typecheck verify lock updater-translations check-translations
 
 help:
 	@echo "make install  Sync locked runtime and development dependencies"
@@ -10,9 +10,10 @@ help:
 	@echo "make test     Run tests"
 	@echo "make lint     Check Ruff rules and formatting"
 	@echo "make format   Apply Ruff fixes and formatting"
-	@echo "make typecheck Check types in the core modules"
+	@echo "make typecheck Check types throughout the application"
 	@echo "make verify   Check lock, syntax, lint, types and tests"
 	@echo "make lock     Resolve dependencies after pyproject changes"
+	@echo "make updater-translations Generate the standalone updater catalog"
 
 install:
 	$(UV) sync --locked
@@ -41,6 +42,12 @@ typecheck:
 lock:
 	$(UV) lock
 
+updater-translations:
+	$(UV) run --locked python scripts/generate_updater_translations.py
+
+check-translations:
+	$(UV) run --locked python scripts/generate_updater_translations.py --check
+
 verify:
 	$(UV) lock --check
-	$(MAKE) check lint typecheck test
+	$(MAKE) check lint check-translations typecheck test

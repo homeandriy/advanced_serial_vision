@@ -56,7 +56,7 @@ ignore = ["E501"] # Long translations and URLs are intentionally kept intact.
 
 [tool.mypy]
 # Use the running interpreter's version; CI checks both Python 3.11 and 3.13.
-files = ["application/serial_vision/image_catalog.py", "application/serial_vision/image_editing.py", "application/serial_vision/recognition_strategies.py", "application/serial_vision/updates.py", "application/serial_vision/version.py"]
+files = ["application/serial_vision"]
 check_untyped_defs = true
 ignore_missing_imports = true
 follow_imports = "silent"

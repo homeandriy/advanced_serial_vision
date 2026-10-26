@@ -192,7 +192,7 @@ class ImageEditingTest(unittest.TestCase):
         angle_button = next(
             control
             for control in dialog.findChildren(QPushButton)
-            if control.text() == dialog.tr("editor_apply_rotation")
+            if control.text() == dialog.translate("editor_apply_rotation")
         )
         angle_button.click()
         self.assertNotEqual(previous_size, dialog.session.size)

@@ -76,9 +76,13 @@ uv run --locked mypy
 uv run --locked python -m unittest discover -s application/tests -v
 ```
 
-`make format` застосовує Ruff fixes і форматування. Перевірка типів поки охоплює
-ядро: каталог і редагування фото, стратегії розпізнавання, оновлення та версію;
-повний перелік визначено в `[tool.mypy]`. Qt UI додається поступово.
+`make format` застосовує Ruff fixes і форматування. Перевірка типів охоплює весь
+пакет `application/serial_vision`, включно з прикладним сервісом, БД, API,
+фоновими робітниками й Qt UI. Шлях пакета визначено в `[tool.mypy]`.
+`make updater-translations` генерує переклади окремого оновлювача з основного
+каталогу; `make check-translations` перевіряє, що копія актуальна.
+Межі модулів описано в [архітектурі](documents/architecture.md), а відтворювані
+вимірювання для великих каталогів і БД — у [продуктивності](documents/scalability.md).
 Mypy використовує версію Python поточного середовища; перевірка Python 3.11 у CI
 окремо зберігає контроль мінімально підтримуваної версії.
 CI виконує перевірки для PR і push у `main`: Linux з Python 3.11/3.13 та Windows

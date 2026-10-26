@@ -80,7 +80,7 @@ def icon_size(style: str) -> QSize:
 
 def apply_button_icons(style: str) -> None:
     app = QApplication.instance()
-    if app is None:
+    if not isinstance(app, QApplication):
         return
     app.setProperty("icon_style", style)
     for widget in app.allWidgets():

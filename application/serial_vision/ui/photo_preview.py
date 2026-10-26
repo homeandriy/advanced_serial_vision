@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPainter, QPixmap, QResizeEvent, QWheelEvent
-from PySide6.QtWidgets import QGraphicsScene, QGraphicsView, QWidget
+from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsScene, QGraphicsView, QWidget
 
 
 class PhotoPreview(QGraphicsView):
@@ -15,7 +15,7 @@ class PhotoPreview(QGraphicsView):
         self.empty_text = empty_text
         self._scene = QGraphicsScene(self)
         self.setScene(self._scene)
-        self._photo = None
+        self._photo: QGraphicsPixmapItem | None = None
         self._fit = True
         self.setObjectName("imagePreview")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
