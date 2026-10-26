@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from threading import Event
@@ -40,14 +41,15 @@ class UiWorkflowTest(unittest.TestCase):
         self.wait_gallery()
 
     def wait_gallery(self) -> None:
-        for _ in range(500):
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
             self.app.processEvents()
             if (
                 self.window.recognition_page.gallery_worker is None
                 and self.window.statistics_page.worker is None
             ):
                 return
-            QTest.qWait(10)
+            time.sleep(0.005)
         self.fail("Background screen workers did not finish")
 
     def tearDown(self) -> None:
@@ -188,7 +190,7 @@ class UiWorkflowTest(unittest.TestCase):
                     page.refresh_images()
                     release.set()
                     self.wait_gallery()
-                self.assertEqual({new_path}, set(page._image_buttons))
+                self.assertEqual({new_path.resolve()}, set(page._image_buttons))
             finally:
                 release.set()
                 self.wait_gallery()

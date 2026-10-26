@@ -49,6 +49,8 @@ jobs:
           uv sync --locked --python ${{ matrix.python }}
       - name: Check syntax
         run: uv run --locked python -m compileall -q application
+      - name: Text encoding and line endings
+        run: uv run --locked python scripts/check_text_files.py
       - name: Ruff lint
         run: uv run --locked ruff check .
       - name: Ruff formatting

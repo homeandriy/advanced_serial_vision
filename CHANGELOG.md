@@ -6,6 +6,7 @@
 
 ### Changed
 
+- Enforce UTF-8 without BOM and LF through Git/editor settings, a staged-content pre-commit hook and CI.
 - Split the main window into seven independent screens and an update controller; background gallery indexing, bounded thumbnail caching, statistics and camera decoding keep the interface responsive.
 - Aggregate statistics in SQLite while preserving Kyiv time-zone boundaries and full equipment exports.
 - Check the entire application with Mypy and generate the standalone updater translations from the shared three-language catalog in Make and CI.

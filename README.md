@@ -79,6 +79,10 @@ uv run --locked python -m unittest discover -s application/tests -v
 `make format` застосовує Ruff fixes і форматування. Перевірка типів охоплює весь
 пакет `application/serial_vision`, включно з прикладним сервісом, БД, API,
 фоновими робітниками й Qt UI. Шлях пакета визначено в `[tool.mypy]`.
+Текстові файли мають UTF-8 без BOM і LF. `make check-text` перевіряє весь
+відстежуваний репозиторій; ця перевірка входить у `make verify` та CI.
+Виконайте `make install-hooks`, щоб pre-commit перевіряв саме вміст індексу Git
+перед кожним комітом. `.gitattributes` та `.editorconfig` задають LF для Git та IDE.
 `make updater-translations` генерує переклади окремого оновлювача з основного
 каталогу; `make check-translations` перевіряє, що копія актуальна.
 Межі модулів описано в [архітектурі](documents/architecture.md), а відтворювані

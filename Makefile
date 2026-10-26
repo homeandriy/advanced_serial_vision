@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 UV ?= uv
 
-.PHONY: help install run check test lint format typecheck verify lock updater-translations check-translations
+.PHONY: help install run check test lint format typecheck verify lock updater-translations check-translations check-text install-hooks
 
 help:
 	@echo "make install  Sync locked runtime and development dependencies"
@@ -14,6 +14,8 @@ help:
 	@echo "make verify   Check lock, syntax, lint, types and tests"
 	@echo "make lock     Resolve dependencies after pyproject changes"
 	@echo "make updater-translations Generate the standalone updater catalog"
+	@echo "make check-text Check UTF-8 without BOM and LF in tracked text files"
+	@echo "make install-hooks Enable the pre-commit text check"
 
 install:
 	$(UV) sync --locked
@@ -50,4 +52,10 @@ check-translations:
 
 verify:
 	$(UV) lock --check
-	$(MAKE) check lint check-translations typecheck test
+	$(MAKE) check-text check lint check-translations typecheck test
+
+check-text:
+	$(UV) run --locked python scripts/check_text_files.py
+
+install-hooks:
+	git config core.hooksPath .githooks

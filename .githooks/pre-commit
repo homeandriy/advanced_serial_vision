@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+if [ -x .venv/bin/python ]; then
+    exec .venv/bin/python scripts/check_text_files.py --staged
+elif [ -f .venv/Scripts/python.exe ]; then
+    exec .venv/Scripts/python.exe scripts/check_text_files.py --staged
+else
+    exec python3 scripts/check_text_files.py --staged
+fi

@@ -1,0 +1,32 @@
+* text=auto eol=lf
+
+*.py text
+*.md text
+*.txt text
+*.toml text
+*.lock text
+*.json text
+*.yml text
+*.yaml text
+*.qss text
+*.svg text
+*.html text
+*.sh text
+*.spec text
+*.iss text
+*.wxs text
+*.xslt text
+*.rtf text
+
+*.png -text
+*.ico -text
+*.jpg -text
+*.jpeg -text
+*.gif -text
+*.webp -text
+*.pdf -text
+*.zip -text
+*.xlsx -text
+*.exe -text
+*.dll -text
+*.onnx -text
