@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## v0.8.0 - 2026-10-26
+
+### Added
+
+- Warehouse accounting with warehouse/person directories, responsibility history, stock balances and an immutable receipt/issue/transfer ledger for serialized equipment; filter by warehouse, model, responsible person or serial.
+- Atomic, idempotent stock operations and Excel templates/imports for initial warehouses and responsible people; selected OCR text can open a warehouse receipt.
+- Optional warehouse-only login, protected first-administrator setup, storekeeper/manager/admin roles, assigned-warehouse permissions and temporary passwords requiring replacement at first login.
+- Administrative user/access management, password reset, scoped/revocable API tokens, three-language translation overrides and audit records.
+- A shared headless TLS service for Windows RDP sessions, a standalone server build, certificate/bootstrap helper and WinSW deployment configuration; clients keep independent sessions and never open the shared database directly.
+
+### Security
+
+- Argon2id password hashes, hashed expiring session/API tokens, server-side authorization, login throttling and checks protecting the last administrator.
+- TLS certificate verification, private bootstrap credentials, bounded HTTP workers and request sizes, and no automatic fallback to a private warehouse database when the shared service is unavailable.
+
+### Changed
+
+- Windows desktop instance locks are scoped by Session ID. Existing offline OCR and classic equipment records remain available without warehouse login.
+- Windows CI builds and smoke-tests the warehouse service alongside application checks.
+
 ## v0.7.5 - 2026-10-26
 
 ### Changed
