@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## v0.7.5 - 2026-10-26
+
+### Changed
+
+- Split the main window into seven independent screens and an update controller; background gallery indexing, bounded thumbnail caching, statistics and camera decoding keep the interface responsive.
+- Aggregate statistics in SQLite while preserving Kyiv time-zone boundaries and full equipment exports.
+- Check the entire application with Mypy and generate the standalone updater translations from the shared three-language catalog in Make and CI.
+- Update architecture and technical-debt documentation with reproducible before/after measurements for 5000 photos and 100 000 records.
+
+### Fixed
+
+- Save settings atomically and restore the previous local API configuration after a failed write, commit or port change; retain unsaved form changes on failure.
+- Reject stale background gallery/statistics responses when the operator changes a folder or grouping.
+
 ## v0.7.4 - 2026-10-26
 
 ### Fixed
